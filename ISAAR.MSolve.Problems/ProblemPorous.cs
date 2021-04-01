@@ -1,15 +1,21 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using ISAAR.MSolve.Matrices.Interfaces;
-using ISAAR.MSolve.PreProcessor;
-using ISAAR.MSolve.Solvers.Interfaces;
-using ISAAR.MSolve.Matrices;
-using ISAAR.MSolve.Analyzers.Interfaces;
-using ISAAR.MSolve.PreProcessor.Interfaces;
-using ISAAR.MSolve.PreProcessor.Providers;
 using ISAAR.MSolve.Analyzers;
+using ISAAR.MSolve.Analyzers.Dynamic;
+using ISAAR.MSolve.Analyzers.Interfaces;
+using ISAAR.MSolve.Analyzers.Loading;
+using ISAAR.MSolve.Analyzers.NonLinear;
+using ISAAR.MSolve.Discretization.FreedomDegrees;
+using ISAAR.MSolve.Discretization.Interfaces;
+using ISAAR.MSolve.Discretization.Providers;
+using ISAAR.MSolve.FEM.Entities;
+using ISAAR.MSolve.FEM.Interfaces;
+using ISAAR.MSolve.FEM.Providers;
+using ISAAR.MSolve.LinearAlgebra.Matrices;
+using ISAAR.MSolve.LinearAlgebra.Matrices.Builders;
+using ISAAR.MSolve.LinearAlgebra.Vectors;
+using ISAAR.MSolve.Solvers;
+using ISAAR.MSolve.Solvers.LinearSystems;
 
 namespace ISAAR.MSolve.Problems
 {
@@ -17,21 +23,25 @@ namespace ISAAR.MSolve.Problems
     {
         private bool providersInitialized = false;
         private double scalingCoefficient;
-        private Dictionary<int, IMatrix2D<double>> ms, cs, ks;
-        private Dictionary<int, Sparse2D<double>> qs;
+        private Dictionary<int, IMatrix> ms, cs, ks;
+        private Dictionary<int, CsrMatrix> qs;
         private readonly Model model;
-        private IDictionary<int, ISolverSubdomain> subdomains;
+        private readonly ISolver solver;
+        private readonly IReadOnlyDictionary<int, ILinearSystem> linearSystems;
         private ElementPoreStiffnessProvider stiffnessProvider;
         private ElementPoreDampingProvider dampingProvider;
         private ElementPoreMassProvider massProvider;
 
-        public ProblemPorous(Model model, IDictionary<int, ISolverSubdomain> subdomains)
+        public ProblemPorous(Model model, ISolver solver)
         {
             this.model = model;
-            this.subdomains = subdomains;
+            this.solver = solver;
+            this.linearSystems = solver.LinearSystems;
         }
 
-        private IDictionary<int, IMatrix2D<double>> Ms
+        public IDirichletEquivalentLoadsAssembler DirichletLoadsAssembler => throw new NotImplementedException();
+
+        private IDictionary<int, IMatrix> Ms
         {
             get
             {
@@ -40,7 +50,7 @@ namespace ISAAR.MSolve.Problems
             }
         }
 
-        private IDictionary<int, IMatrix2D<double>> Cs
+        private IDictionary<int, IMatrix> Cs
         {
             get
             {
@@ -49,7 +59,7 @@ namespace ISAAR.MSolve.Problems
             }
         }
 
-        private IDictionary<int, IMatrix2D<double>> Ks
+        private IDictionary<int, IMatrix> Ks
         {
             get
             {
@@ -72,80 +82,74 @@ namespace ISAAR.MSolve.Problems
             BuildQs();
         }
 
-        private void BuildKs()
-        {
-            ks = new Dictionary<int, IMatrix2D<double>>(model.SubdomainsDictionary.Count);
-            foreach (Subdomain subdomain in model.SubdomainsDictionary.Values)
-                ks.Add(subdomain.ID, GlobalMatrixAssemblerSkyline.CalculateGlobalMatrix(subdomain, stiffnessProvider));
-        }
+        private void BuildKs() => ks = solver.BuildGlobalMatrices(stiffnessProvider);
 
         private void RebuildKs()
         {
-            foreach (Subdomain subdomain in model.SubdomainsDictionary.Values)
+            //TODO: This will rebuild all the stiffnesses of all subdomains, if even one subdomain has MaterialsModified = true.
+            //      Optimize this, by passing a flag foreach subdomain to solver.BuildGlobalSubmatrices().
+
+            bool mustRebuild = false;
+            foreach (ISubdomain subdomain in model.EnumerateSubdomains())
             {
-                if (subdomain.MaterialsModified)
-                    ks[subdomain.ID] = GlobalMatrixAssemblerSkyline.CalculateGlobalMatrix(subdomain, stiffnessProvider);
-                subdomain.ResetMaterialsModifiedProperty();
+                if (subdomain.StiffnessModified)
+                {
+                    mustRebuild = true;
+                    break;
+                }
             }
+            if (mustRebuild) ks = solver.BuildGlobalMatrices(stiffnessProvider);
+            foreach (ISubdomain subdomain in model.EnumerateSubdomains()) subdomain.ResetMaterialsModifiedProperty();
         }
 
-        private void BuildMs()
-        {
-            ms = new Dictionary<int, IMatrix2D<double>>(model.SubdomainsDictionary.Count);
-            foreach (Subdomain subdomain in model.SubdomainsDictionary.Values)
-                ms.Add(subdomain.ID, GlobalMatrixAssemblerSkyline.CalculateGlobalMatrix(subdomain, massProvider));
-        }
+        private void BuildMs() => ms = solver.BuildGlobalMatrices(massProvider);
 
-        private void BuildCs()
-        {
-            cs = new Dictionary<int, IMatrix2D<double>>(model.SubdomainsDictionary.Count);
-            foreach (Subdomain subdomain in model.SubdomainsDictionary.Values)
-                cs.Add(subdomain.ID, GlobalMatrixAssemblerSkyline.CalculateGlobalMatrix(subdomain, dampingProvider));
-        }
+        private void BuildCs() => cs = solver.BuildGlobalMatrices(dampingProvider);
 
         private void BuildQs()
         {
-            qs = new Dictionary<int, Sparse2D<double>>(model.SubdomainsDictionary.Count);
+            qs = new Dictionary<int, CsrMatrix>(model.SubdomainsDictionary.Count);
             foreach (Subdomain subdomain in model.SubdomainsDictionary.Values)
+            {
                 qs.Add(subdomain.ID, BuildQFromSubdomain(subdomain));
+            }
         }
 
-        private Sparse2D<double> BuildQFromSubdomain(Subdomain subdomain)
+        //TODO: this should be done by an assembler class
+        //TODO: make sure this is called whenever the ordering changes
+        private CsrMatrix BuildQFromSubdomain(Subdomain subdomain) 
         {
-            Sparse2D<double> qSubdomain = new Sparse2D<double>(subdomain.TotalDOFs, subdomain.TotalDOFs);
-            foreach (Element element in subdomain.ElementsDictionary.Values)
+            int numFreeDofs = subdomain.FreeDofOrdering.NumFreeDofs;
+            var qSubdomain = DokRowMajor.CreateEmpty(numFreeDofs, numFreeDofs);
+            DofTable allDofs = subdomain.FreeDofOrdering.FreeDofs;
+            foreach (Element element in subdomain.Elements.Values)
             {
                 if (!(element.ElementType is IPorousFiniteElement)) continue;
 
-                IPorousFiniteElement e = (IPorousFiniteElement)element.ElementType;
-                IMatrix2D<double> q = e.CouplingMatrix(element);
+                var e = (IPorousFiniteElement)element.ElementType;
+                IMatrix q = e.CouplingMatrix(element);
 
                 int iElementMatrixRow = 0;
-                for (int i = 0; i < element.ElementType.DOFEnumerator.GetDOFTypes(element).Count; i++)
+                for (int i = 0; i < element.ElementType.DofEnumerator.GetDofTypesForMatrixAssembly(element).Count; i++)
                 {
                     Node nodeRow = element.Nodes[i];
-                    foreach (DOFType dofTypeRow in element.ElementType.DOFEnumerator.GetDOFTypes(element)[i])
+                    foreach (IDofType dofTypeRow in element.ElementType.DofEnumerator.GetDofTypesForMatrixAssembly(element)[i])
                     {
-                        if (dofTypeRow != DOFType.Pore) continue;
+                        if (dofTypeRow != PorousMediaDof.Pressure) continue;
 
-                        int dofRow = subdomain.NodalDOFsDictionary[nodeRow.ID][dofTypeRow];
-                        if (dofRow != -1)
+                        int dofRow = allDofs[nodeRow, dofTypeRow];
+                        int iElementMatrixColumn = 0;
+
+                        for (int j = 0; j < element.ElementType.DofEnumerator.GetDofTypesForMatrixAssembly(element).Count; j++)
                         {
-                            int iElementMatrixColumn = 0;
-                            for (int j = 0; j < element.ElementType.DOFEnumerator.GetDOFTypes(element).Count; j++)
+                            Node nodeColumn = element.Nodes[j];
+                            foreach (IDofType dofTypeColumn in element.ElementType.DofEnumerator.GetDofTypesForMatrixAssembly(element)[j])
                             {
-                                Node nodeColumn = element.Nodes[j];
-                                foreach (DOFType dofTypeColumn in element.ElementType.DOFEnumerator.GetDOFTypes(element)[j])
-                                {
-                                    if (dofTypeColumn == DOFType.Pore) continue;
+                                if (dofTypeColumn == PorousMediaDof.Pressure) continue;
 
-                                    int dofColumn = subdomain.NodalDOFsDictionary[nodeColumn.ID][dofTypeColumn];
-                                    if (dofColumn != -1)
-                                    {
-                                        qSubdomain[dofColumn, dofRow] += q[iElementMatrixRow, iElementMatrixColumn];
-                                    }
-                                    iElementMatrixColumn++;
-                                }
+                                int dofColumn = allDofs[nodeColumn, dofTypeColumn];
+                                qSubdomain.AddToEntry(dofColumn, dofRow, q[iElementMatrixRow, iElementMatrixColumn]);
+                                iElementMatrixColumn++;
                             }
                         }
                         iElementMatrixRow++;
@@ -153,39 +157,39 @@ namespace ISAAR.MSolve.Problems
                 }
             }
 
-            return qSubdomain;
+            return qSubdomain.BuildCsrMatrix(true);
         }
 
-        private void ScaleSubdomainSolidVector(ISolverSubdomain subdomain, IVector<double> vector)
+        private void ScaleSubdomainSolidVector(ISubdomain subdomain, IVector vector)
         {
-            foreach (int nodeID in model.SubdomainsDictionary[subdomain.ID].NodalDOFsDictionary.Keys)
-                foreach (DOFType dofType in model.SubdomainsDictionary[subdomain.ID].NodalDOFsDictionary[nodeID].Keys)
-                    if (dofType != DOFType.Pore)
-                    {
-                        int dof = model.SubdomainsDictionary[subdomain.ID].NodalDOFsDictionary[nodeID][dofType];
-                        if (dof > -1) vector[dof] *= this.scalingCoefficient;
-                    }
+            foreach ((INode node, IDofType dofType, int dofIdx) in subdomain.FreeDofOrdering.FreeDofs)
+            {
+                if (dofType != PorousMediaDof.Pressure) vector.Set(dofIdx, vector[dofIdx] * this.scalingCoefficient);
+            }
         }
 
-        private void CalculateEffectiveMatrixInternal(ISolverSubdomain subdomain, ImplicitIntegrationCoefficients coefficients)
+        private IMatrixView CalculateEffectiveMatrixInternal(ImplicitIntegrationCoefficients coefficients, ISubdomain subdomain)
         {
-            subdomain.Matrix = this.Ks[subdomain.ID];
-            subdomain.Matrix.LinearCombination(
-                new double[] 
-                {
-                    coefficients.Stiffness, coefficients.Mass, coefficients.Damping
-                },
-                new IMatrix2D<double>[] 
-                { 
-                    this.Ks[subdomain.ID], this.Ms[subdomain.ID], this.Cs[subdomain.ID] 
-                });
+            int id = subdomain.ID;
+            IMatrix matrix = this.Ks[id];
+            matrix.LinearCombinationIntoThis(coefficients.Stiffness, Ms[id], coefficients.Mass);
+            matrix.AxpyIntoThis(Cs[id], coefficients.Damping);
+            return matrix;
         }
 
         #region IAnalyzerProvider Members
+        public void ClearMatrices()
+        {
+            ms = null;
+            cs = null;
+            ks = null;
+            qs = null;
+        }
+
         public void Reset()
         {
             foreach (Subdomain subdomain in model.SubdomainsDictionary.Values)
-                foreach (var element in subdomain.ElementsDictionary.Values)
+                foreach (Element element in subdomain.Elements.Values)
                     element.ElementType.ClearMaterialState();
 
             cs = null;
@@ -196,47 +200,105 @@ namespace ISAAR.MSolve.Problems
 
         #region IImplicitIntegrationProvider Members
 
-        public void CalculateEffectiveMatrix(ISolverSubdomain subdomain, ImplicitIntegrationCoefficients coefficients)
+        public IMatrixView LinearCombinationOfMatricesIntoStiffness(ImplicitIntegrationCoefficients coefficients, 
+            ISubdomain subdomain)
         {
             InitializeProvidersAndBuildQs(coefficients);
             scalingCoefficient = coefficients.Damping;
-            CalculateEffectiveMatrixInternal(subdomain, coefficients);
+            return CalculateEffectiveMatrixInternal(coefficients, subdomain);
         }
 
-        public void ProcessRHS(ISolverSubdomain subdomain, ImplicitIntegrationCoefficients coefficients)
+        public void ProcessRhs(ImplicitIntegrationCoefficients coefficients, ISubdomain subdomain, IVector rhs)
         {
             scalingCoefficient = coefficients.Damping;
-            ScaleSubdomainSolidVector(subdomain, subdomain.RHS);
+            ScaleSubdomainSolidVector(subdomain, rhs);
         }
 
-        public void GetRHSFromHistoryLoad(int timeStep)
+        public IDictionary<int, IVector> GetRhsFromHistoryLoad(int timeStep)
         {
-            foreach (Subdomain subdomain in model.SubdomainsDictionary.Values)
-                for (int i = 0; i < subdomain.Forces.Length; i++)
-                    subdomain.Forces[i] = 0;
+            foreach (Subdomain subdomain in model.EnumerateSubdomains()) subdomain.Forces.Clear(); //TODO: this is also done by model.AssignLoads()
 
-            model.AssignLoads();
-            model.AssignMassAccelerationHistoryLoads(timeStep);
+            model.ApplyLoads();
+            LoadingUtilities.ApplyNodalLoads(model, solver);
+            model.ApplyMassAccelerationHistoryLoads(timeStep);
+
+            var rhsVectors = new Dictionary<int, IVector>();
+            foreach (Subdomain subdomain in model.EnumerateSubdomains()) rhsVectors.Add(subdomain.ID, subdomain.Forces);
+            return rhsVectors;
         }
 
-        public void MassMatrixVectorProduct(ISolverSubdomain subdomain, IVector<double> vIn, double[] vOut)
+        public IDictionary<int, IVector> GetAccelerationsOfTimeStep(int timeStep)
         {
-            this.Ms[subdomain.ID].Multiply(vIn, vOut);
+            var d = new Dictionary<int, IVector>();
+            foreach (ILinearSystem linearSystem in linearSystems.Values)
+            {
+                d.Add(linearSystem.Subdomain.ID, linearSystem.CreateZeroVector());
+            }
+
+            if (model.MassAccelerationHistoryLoads.Count > 0)
+            {
+                List<MassAccelerationLoad> m = new List<MassAccelerationLoad>(model.MassAccelerationHistoryLoads.Count);
+                foreach (IMassAccelerationHistoryLoad l in model.MassAccelerationHistoryLoads)
+                    m.Add(new MassAccelerationLoad() { Amount = l[timeStep], DOF = l.DOF });
+
+                foreach (ISubdomain subdomain in model.EnumerateSubdomains())
+                {
+                    int[] subdomainToGlobalDofs = model.GlobalDofOrdering.MapSubdomainToGlobalDofs(subdomain);
+                    foreach ((INode node, IDofType dofType, int subdomainDofIdx) in subdomain.FreeDofOrdering.FreeDofs)
+                    {
+                        int globalDofIdx = subdomainToGlobalDofs[subdomainDofIdx];
+                        foreach (var l in m)
+                        {
+                            if (dofType == l.DOF) d[subdomain.ID].Set(globalDofIdx, l.Amount);
+                        }
+                    }
+                }
+            }
+
+            //foreach (ElementMassAccelerationHistoryLoad load in model.ElementMassAccelerationHistoryLoads)
+            //{
+            //    MassAccelerationLoad hl = new MassAccelerationLoad() { Amount = load.HistoryLoad[timeStep] * 564000000, DOF = load.HistoryLoad.DOF };
+            //    load.Element.Subdomain.AddLocalVectorToGlobal(load.Element,
+            //        load.Element.ElementType.CalculateAccelerationForces(load.Element, (new MassAccelerationLoad[] { hl }).ToList()),
+            //        load.Element.Subdomain.Forces);
+            //}
+
+            return d;
         }
 
-        public void DampingMatrixVectorProduct(ISolverSubdomain subdomain, IVector<double> vIn, double[] vOut)
+        public IDictionary<int, IVector> GetVelocitiesOfTimeStep(int timeStep)
         {
-            this.Cs[subdomain.ID].Multiply(vIn, vOut);
-            double[] vQ = new double[vOut.Length];
-            qs[subdomain.ID].Multiply(vIn, vQ);
-            for (int i = 0; i < vOut.Length; i++) vOut[i] -= vQ[i];
+            var d = new Dictionary<int, IVector>();
+
+            foreach (ILinearSystem linearSystem in linearSystems.Values)
+            {
+                d.Add(linearSystem.Subdomain.ID, linearSystem.CreateZeroVector());
+            }
+
+            return d;
+        }
+
+        public IVector MassMatrixVectorProduct(ISubdomain subdomain, IVectorView vector)
+            => this.Ms[subdomain.ID].Multiply(vector);
+
+        public IVector DampingMatrixVectorProduct(ISubdomain subdomain, IVectorView vector)
+        {
+            IVector result = this.Cs[subdomain.ID].Multiply(vector);
+            result.SubtractIntoThis(qs[subdomain.ID].Multiply(vector));
+            return result;
         }
 
         #endregion
 
         #region IStaticProvider Members
 
-        public void CalculateMatrix(ISolverSubdomain subdomain)
+        public IMatrixView CalculateMatrix(ISubdomain subdomain)
+        {
+            throw new NotImplementedException();
+        }
+
+        public (IMatrixView matrixFreeFree, IMatrixView matrixFreeConstr, IMatrixView matrixConstrFree,
+            IMatrixView matrixConstrConstr) CalculateSubMatrices(ISubdomain subdomain)
         {
             throw new NotImplementedException();
         }
@@ -250,30 +312,23 @@ namespace ISAAR.MSolve.Problems
 
         #region INonLinearProvider Members
 
-        public double RHSNorm(double[] rhs)
+        public double CalculateRhsNorm(IVectorView rhs)
         {
+            //TODO: cache the relevant indices.
             //return (new Vector<double>(rhs)).Norm;
 
             double norm = 0;
-            foreach (int nodeID in model.NodalDOFsDictionary.Keys)
-                foreach (DOFType dofType in model.NodalDOFsDictionary[nodeID].Keys)
-                    if (dofType != DOFType.Pore)
-                    {
-                        int dof = model.NodalDOFsDictionary[nodeID][dofType];
-                        if (dof > -1) norm += rhs[dof] * rhs[dof];
-                    }
+            foreach ((INode node, IDofType dofType, int dofIdx) in model.GlobalDofOrdering.GlobalFreeDofs)
+            {
+                if (dofType != PorousMediaDof.Pressure) norm += rhs[dofIdx] * rhs[dofIdx];
+            }
             return Math.Sqrt(norm);
         }
 
-        public void ProcessInternalRHS(ISolverSubdomain subdomain, double[] rhs, double[] solution)
+        public void ProcessInternalRhs(ISubdomain subdomain, IVectorView solution, IVector rhs)
         {
-            //ScaleSubdomainSolidVector(subdomain, new Vector<double>(rhs));
-            //return;
-
-            double[] vQ = new double[rhs.Length];
-            qs[subdomain.ID].Multiply(new Vector<double>(solution), vQ);
-            for (int i = 0; i < rhs.Length; i++) rhs[i] += vQ[i];
-            ScaleSubdomainSolidVector(subdomain, new Vector<double>(rhs));
+            rhs.AddIntoThis(qs[subdomain.ID].Multiply(solution));
+            ScaleSubdomainSolidVector(subdomain, rhs);
         }
 
         #endregion

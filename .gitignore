@@ -243,3 +243,8 @@ ModelManifest.xml
 
 # FAKE - F# Make
 .fake/
+*.iga
+*.dat
+*.vtu
+*.vts
+/ISAAR.MSolve.IGA.Tests/OutputFiles
