@@ -34,7 +34,7 @@ namespace ISAAR.MSolve.SamplesConsole
             Node nodeLeft = null;
             Node nodeRight = null;
             Node nodeTop = null;
-            Node nodeBottom = null;
+            Node nodeBottom =  null;
             double distanceLeft = Double.MaxValue;
             double distanceRight = Double.MaxValue;
             double distanceTop = Double.MaxValue;
