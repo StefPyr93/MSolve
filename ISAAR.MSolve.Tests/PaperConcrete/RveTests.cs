@@ -33,6 +33,9 @@ using MathNet.Numerics.LinearAlgebra;
 using Troschuetz.Random;
 using Xunit;
 using MatlabWriter = MathNet.Numerics.Data.Matlab.MatlabWriter;
+using ISAAR.MSolve.FEM.Entities;
+using ISAAR.MSolve.Analyzers.NonLinear;
+using ISAAR.MSolve.Logging;
 
 //[assembly: SuppressXUnitOutputException]
 
@@ -252,7 +255,7 @@ namespace ISAAR.MSolve.Tests
         {
             LinearAlgebra.LibrarySettings.LinearAlgebraProviders = LinearAlgebra.LinearAlgebraProviderChoice.MKL;
 
-            string pathName = @"C:\Users\stefp\OneDrive\Desktop\Solution Soimiri\matlabGeneratedCNTs\RVE Solutions";
+            string pathName = @"C:\Users\felhuy\Desktop";
 
             string InputFileName = "Input data.txt";
             string InputExtension = Path.GetExtension(InputFileName);
@@ -266,22 +269,24 @@ namespace ISAAR.MSolve.Tests
 
             bool append = false;
 
-            int numberOfCnts = 780;
+            int numberOfCnts = 0;
             int solutions = 1;
-            int increments_per_solution = 10;
+            int increments_per_solution = 100;
             double[][] Input = new double[solutions * increments_per_solution][];
             double[][] Output = new double[solutions * increments_per_solution][];
 
             var homogeneousRveBuilder1 =
                 new CntReinforcedElasticNanocomposite(numberOfCnts); //{ K_el = 20, K_pl = 2, T_max = 0.2, };
-            homogeneousRveBuilder1.readFromText = true;
+            homogeneousRveBuilder1.readFromText = false;
 
             IContinuumMaterial3D microstructure3 = new Microstructure3D(homogeneousRveBuilder1,
-                model => (new SuiteSparseSolver.Builder()).BuildSolver(model), false, 1);
+                model => (new CSparseLUSolver.Builder()).BuildSolver(model), false, 1);
 
             for (int num_solution = 0; num_solution < solutions; num_solution++)
             {
-                var MacroStrain = new double[6] {0.04, 0.02, 0.02, 0.04, 0.02, 0.02 };
+                var maxstrain = 0.01;
+                var MacroStrain = new double[6] { maxstrain, -0.2 * maxstrain, -0.2 * maxstrain, 0.0, 0.0, 0.0 };
+                //var MacroStrain = new double[6] { 0.1, 0.1, 0.1, 0.05, 0.05, 0.05 };
                 //var trandom = new TRandom();
                 //for (int ii = 0; ii < 6; ii++) { MacroStrain[ii] = trandom.ContinuousUniform(-0.1, 0.1); }
 
@@ -300,7 +305,8 @@ namespace ISAAR.MSolve.Tests
                     for (int ii = 0; ii < 6; ii++) { IncrMacroStrain[ii] = MacroStrain[ii] * (i + 1) / increments_per_solution; }
                     microstructure3.UpdateMaterial(new double[6] { IncrMacroStrain[0], IncrMacroStrain[1], IncrMacroStrain[2], IncrMacroStrain[3], IncrMacroStrain[4], IncrMacroStrain[5] });
                     //Debug.WriteLine($"Strain {IncrMacroStrain[0]},{IncrMacroStrain[1]},{IncrMacroStrain[2]},{IncrMacroStrain[3]},{IncrMacroStrain[4]},{IncrMacroStrain[5]}");
-
+                    //microstructure3.UpdateMaterial(new double[6] { MacroStrain[0], MacroStrain[1], MacroStrain[2], MacroStrain[3], MacroStrain[4], MacroStrain[5] });
+                    
                     double[] IncrMacroStress = new double[6] { microstructure3.Stresses[0], microstructure3.Stresses[1], microstructure3.Stresses[2], microstructure3.Stresses[3], microstructure3.Stresses[4], microstructure3.Stresses[5] };
 
                     microstructure3.SaveState();
@@ -342,5 +348,193 @@ namespace ISAAR.MSolve.Tests
                 //var jacobian = NNtest.CalculateNeuralNetworkJacobian(input);
             }
         }
+
+        [Fact]
+        public static void TestMazarsConcreteMaterialPoint()
+        {
+            var max_strain = new double[6] { -0.01, 0.01 * 0.2, 0.01 * 0.2, 0, 0, 0 };
+            var increments = 100;
+            var strain = new double[6];
+            var stress = new double[increments];
+            var dmg = new double[increments];
+            var concrete = new MazarsConcreteMaterial()
+            {
+                youngModulus = 30000,
+                poissonRatio = 0.2,
+                At = 1.0,
+                Bt = 15000,
+                Ac = 1.2,
+                Bc = 1500,
+                Strain_0 = 0.0001,
+                Veta = 1,
+            };
+            for (int i = 0; i < increments; i++)
+            {
+                for (int j = 0; j < 6; j++)
+                    strain[j] = (i + 1) * max_strain[j] / increments;
+                concrete.UpdateMaterial(strain);
+                stress[i] = concrete.Stresses[0];
+                dmg[i] = concrete.dmg;
+            }
+        }
+
+        //[Fact]
+        //public void TestMazarsConcreteMaterialDisplacementControl()
+        //{
+        //    double nodalDisplacement = 146.0;
+        //    double area = 91.04;
+        //    double inertia = 8091.0;
+        //    int nNodes = 3;
+        //    int nElems = 2;
+        //    int monitorNode = 3;
+        //    int subdomainID = 0;
+        //    // Create new 2D material
+        //    var material = new MazarsConcreteMaterial
+        //    {
+        //        youngModulus = 30000,
+        //        poissonRatio = 0.2,
+        //        At = 1.0,
+        //        Bt = 15000,
+        //        Ac = 1.2,
+        //        Bc = 1500,
+        //        Strain_0 = 0.0001,
+        //        Veta = 1,
+        //    };
+
+        //    // Model creation
+        //    Model model = new Model();
+
+        //    // Add a single subdomain to the model
+        //    model.SubdomainsDictionary.Add(subdomainID, new Subdomain(subdomainID));
+
+        //    // Node creation
+        //    double[,] nodeData = new double[,] { {-0.250000,-0.250000,-0.2500000},
+        //    {0.250000,-0.250000,-0.250000},
+        //    {-0.250000,0.250000,-0.250000},
+        //    {0.250000,0.250000,-0.250000},
+        //    {-0.250000,-0.250000,0.250000},
+        //    {0.250000,-0.250000,0.250000},
+        //    {-0.250000,0.250000,0.250000},
+        //    {0.250000,0.250000,0.250000},
+        //    };
+
+        //    int[,] elementData = new int[,] {{1,1,2,4,3,5,6,8,7},
+        //    };
+
+        //    // orismos shmeiwn
+        //    for (int nNode = 0; nNode < nodeData.GetLength(0); nNode++)
+        //    {
+        //        model.NodesDictionary.Add(nNode + 1, new Node(id: nNode + 1, x: nodeData[nNode, 0], y: nodeData[nNode, 1], z: nodeData[nNode, 2]));
+
+        //    }
+
+        //    // orismos elements 
+        //    Element e1;
+        //    for (int nElement = 0; nElement < elementData.GetLength(0); nElement++)
+        //    {
+        //        e1 = new Element()
+        //        {
+        //            ID = nElement + 1,
+        //            ElementType = new Hexa8Fixed(material) // dixws to e. exoume sfalma enw sto beambuilding oxi//edw kaleitai me ena orisma to Hexa8                    
+        //        };
+        //        for (int j = 0; j < 8; j++)
+        //        {
+        //            e1.NodesDictionary.Add(elementData[nElement, j + 1], model.NodesDictionary[elementData[nElement, j + 1]]);
+        //        }
+        //        model.ElementsDictionary.Add(e1.ID, e1);
+        //        model.SubdomainsDictionary[subdomainID].Elements.Add(e1.ID, e1);
+        //    }
+
+        //    // constraint vashh opou z=-1
+        //    for (int k = 1; k < 5; k++)
+        //    {
+        //        model.NodesDictionary[k].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationX });
+        //        model.NodesDictionary[k].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationY });
+        //        model.NodesDictionary[k].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationZ });
+        //    }
+
+        //    // fortish korufhs
+        //    Load load1;
+        //    for (int k = 17; k < 21; k++)
+        //    {
+        //        load1 = new Load()
+        //        {
+        //            Node = model.NodesDictionary[k],
+        //            DOF = StructuralDof.TranslationX,
+        //            Amount = 1 * load_value
+        //        };
+        //        model.Loads.Add(load1);
+        //    }
+
+        //    // Add nodes to the nodes dictonary of the model
+        //    for (int i = 0; i < nodes.Count; ++i)
+        //    {
+        //        model.NodesDictionary.Add(i + 1, nodes[i]);
+        //    }
+
+        //    // Constrain bottom nodes of the model
+        //    model.NodesDictionary[1].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationX });
+        //    model.NodesDictionary[1].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationY });
+        //    model.NodesDictionary[1].Constraints.Add(new Constraint { DOF = StructuralDof.RotationZ });
+
+        //    // Applied displacement
+        //    model.NodesDictionary[3].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationY, Amount = nodalDisplacement });
+
+        //    // Generate elements of the structure
+        //    int iNode = 1;
+        //    for (int iElem = 0; iElem < nElems; iElem++)
+        //    {
+        //        // element nodes
+        //        IList<Node> elementNodes = new List<Node>();
+        //        elementNodes.Add(model.NodesDictionary[iNode]);
+        //        elementNodes.Add(model.NodesDictionary[iNode + 1]);
+
+        //        // Create new Beam3D section and element
+        //        var beamSection = new BeamSection2D(area, inertia);
+
+        //        // Create elements
+        //        var element = new Element()
+        //        {
+        //            ID = iElem + 1,
+        //            ElementType = new Beam2DCorotational(elementNodes, material, 7.85, beamSection)
+        //        };
+
+        //        // Add nodes to the created element
+        //        element.AddNode(model.NodesDictionary[iNode]);
+        //        element.AddNode(model.NodesDictionary[iNode + 1]);
+
+        //        var a = element.ElementType.StiffnessMatrix(element);
+
+        //        // Add beam element to the element and subdomains dictionary of the model
+        //        model.ElementsDictionary.Add(element.ID, element);
+        //        model.SubdomainsDictionary[subdomainID].Elements.Add(element.ID, element);
+        //        iNode++;
+        //    }
+
+        //    // Choose linear equation system solver
+        //    var solverBuilder = new SkylineSolver.Builder();
+        //    ISolver solver = solverBuilder.BuildSolver(model);
+
+        //    // Choose the provider of the problem -> here a structural problem
+        //    var provider = new ProblemStructural(model, solver);
+
+        //    // Choose child analyzer -> Child: NewtonRaphsonNonLinearAnalyzer
+        //    int numIncrements = 10;
+        //    var childAnalyzerBuilder = new DisplacementControlAnalyzer.Builder(model, solver, provider, numIncrements);
+        //    childAnalyzerBuilder.ResidualTolerance = 1E-8;
+        //    childAnalyzerBuilder.MaxIterationsPerIncrement = 100;
+        //    childAnalyzerBuilder.NumIterationsForMatrixRebuild = 1;
+        //    DisplacementControlAnalyzer childAnalyzer = childAnalyzerBuilder.Build();
+
+        //    // Choose parent analyzer -> Parent: Static
+        //    var parentAnalyzer = new StaticAnalyzer(model, solver, provider, childAnalyzer);
+
+        //    // Request output
+        //    childAnalyzer.LogFactories[subdomainID] = new LinearAnalyzerLogFactory(new int[] { 3 });
+
+        //    // Run the analysis
+        //    parentAnalyzer.Initialize();
+        //    parentAnalyzer.Solve();
+        //}
     }
 }

@@ -25,13 +25,13 @@ namespace MGroup.Stochastic
 {
     public class CntReinforcedElasticNanocomposite : IRVEbuilder
     {
-        int hexa1 = 10;
-        int hexa2 = 10;
-        int hexa3 = 10;
+        int hexa1 = 3;
+        int hexa2 = 3;
+        int hexa3 = 3;
 
-        double L01 = 100;
-        double L02 = 100;
-        double L03 = 100;
+        double L01 = 30;
+        double L02 = 30;
+        double L03 = 30;
 
         IIsotropicContinuumMaterial3D matrixMaterial;
         int hostElements { get; set; }
@@ -42,6 +42,7 @@ namespace MGroup.Stochastic
         // cnt paramaters
         IIsotropicContinuumMaterial3D CntMaterial;
         int numberOfCnts;
+        int cntLength = 15;
         // define mechanical properties
         private double youngModulus = 1.0;//1.051e12; // 5490; // 
         private double shearModulus = 1.0;//0.45e12; // 871; // 
@@ -75,7 +76,18 @@ namespace MGroup.Stochastic
             //this.matrixMaterial = new ElasticMaterial3D()
             //{ YoungModulus = 4, PoissonRatio = 0.4, };
             constParameters = new double[3] { K_el, K_pl, T_max };
-            this.matrixMaterial = new NeuralNetworkTrainedMaterial() { ConstParameters = this.constParameters};
+            //this.matrixMaterial = new NeuralNetworkTrainedMaterial() { ConstParameters = this.constParameters };
+            this.matrixMaterial = new MazarsConcreteMaterial()
+            {
+                youngModulus = 30,
+                poissonRatio = 0.2,
+                At = 1.0,
+                Bt = 15000,
+                Ac = 1.2,
+                Bc = 1500,
+                Strain_0 = 0.0001,
+                Veta = 1,
+            };
 
             this.CntMaterial = new ElasticMaterial3D()
             {
@@ -133,13 +145,13 @@ namespace MGroup.Stochastic
             //}
 
             AddCntBeamElements(model, cntNodeIds, cntNodeCoords, cntElementConnectivity);
-            //var embeddedGrouping = EmbeddedBeam3DGrouping.CreateFullyBonded(model, model.ElementsDictionary
-            //.Where(x => x.Key < hostElements).Select(kv => kv.Value).ToArray(), model.ElementsDictionary.Where(x => x.Key >= hostElements)
-            //.Select(kv => kv.Value).ToArray(), true);
-            AddCohesiveBeamElements(model, cntNodeIds, cntNodeCoords, cntElementConnectivity);
-            var embeddedGrouping = EmbeddedBeam3DGrouping.CreateCohesive(model, model.ElementsDictionary
-                        .Where(x => x.Key < hostElements).Select(kv => kv.Value).ToArray(), model.ElementsDictionary.Where(x => x.Key >= hostElements + embeddedElements)
-                        .Select(kv => kv.Value).ToArray(), true);
+            var embeddedGrouping = EmbeddedBeam3DGrouping.CreateFullyBonded(model, model.ElementsDictionary
+            .Where(x => x.Key < hostElements).Select(kv => kv.Value).ToArray(), model.ElementsDictionary.Where(x => x.Key >= hostElements)
+            .Select(kv => kv.Value).ToArray(), true);
+            //AddCohesiveBeamElements(model, cntNodeIds, cntNodeCoords, cntElementConnectivity);
+            //var embeddedGrouping = EmbeddedBeam3DGrouping.CreateCohesive(model, model.ElementsDictionary
+            //            .Where(x => x.Key < hostElements).Select(kv => kv.Value).ToArray(), model.ElementsDictionary.Where(x => x.Key >= hostElements + embeddedElements)
+            //            .Select(kv => kv.Value).ToArray(), true);
 
             //var paraviewEmbedded =
             //    new ParaviewEmbedded3D(model, null, Path.Combine(Directory.GetCurrentDirectory(), "ParaviewCNT"));
@@ -322,31 +334,8 @@ namespace MGroup.Stochastic
                 var cntNodeCoordinates = new double[numberOfCnts * 2, 3];
                 var cntElementConnectivity = new int[numberOfCnts, 2];
 
-                var trandom = new TRandom();
-                for (int i = 0; i < numberOfCnts; i++)
-                {
-                    var randomX1 = trandom.ContinuousUniform(-L01 / 2.0, L01 / 2.0);
-                    var randomY1 = trandom.ContinuousUniform(-L02 / 2.0, L02 / 2.0);
-                    var randomZ1 = trandom.ContinuousUniform(-L03 / 2.0, L03 / 2.0);
-
-                    cntNodeIds[2 * i] = hostNodes + 2 * i;
-                    cntNodeIds[2 * i + 1] = hostNodes + 2 * i + 1;
-
-                    cntNodeCoordinates[2 * i, 0] = -L01 / 2.0 + 1;// randomX1;//
-                    cntNodeCoordinates[2 * i, 1] = 1;// randomY1;
-                    cntNodeCoordinates[2 * i, 2] = 1;// randomZ1;
-
-                    var randomX2 = trandom.ContinuousUniform(-L01 / 2.0, L01 / 2.0);
-                    var randomY2 = trandom.ContinuousUniform(-L02 / 2.0, L02 / 2.0);
-                    var randomZ2 = trandom.ContinuousUniform(-L03 / 2.0, L03 / 2.0);
-
-                    cntNodeCoordinates[2 * i + 1, 0] = L01 / 2.0 - 1; //randomX2;// L01 / 2.0 - 1;
-                    cntNodeCoordinates[2 * i + 1, 1] = 1;//randomY2;
-                    cntNodeCoordinates[2 * i + 1, 2] = 1;//randomZ2;
-
-                    cntElementConnectivity[i, 0] = cntNodeIds[2 * i];
-                    cntElementConnectivity[i, 1] = cntNodeIds[2 * i + 1];
-                }
+                var cntGenerator = new RandomCntGeometryGenerator(1, cntLength, numberOfCnts, L01, L02, L03, hexa1, hexa2, hexa3);
+                (cntNodeIds, cntNodeCoordinates, cntElementConnectivity) = cntGenerator.GenerateCnts();
                 return (cntNodeIds, cntNodeCoordinates, cntElementConnectivity);
             }
             else
@@ -372,8 +361,8 @@ namespace MGroup.Stochastic
                 //string currentCNTconnectivityFileName = string.Format("{0}_{1}{2}", fileNameOnlyCNTconnectivityFileName, noStochasticSimulation, extension_2);
 
 
-                int CNTNodes = File.ReadLines(currentCNTgeometryFileName).Count();
-                int CNTElems = File.ReadLines(currentCNTconnectivityFileName).Count();
+                int CNTNodes =  File.ReadLines(currentCNTgeometryFileName).Count();
+                int CNTElems =  File.ReadLines(currentCNTconnectivityFileName).Count();
 
                 // Geometry
                 using (TextReader reader = File.OpenText(currentCNTgeometryFileName))

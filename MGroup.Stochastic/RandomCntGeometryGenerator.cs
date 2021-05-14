@@ -17,12 +17,15 @@ namespace MGroup.Stochastic
         private readonly double matrixLength;
         private readonly double matrixWidth;
         private readonly double matrixHeight;
+        private readonly int numElemLength;
+        private readonly int numElemWidth;
+        private readonly int numElemHeight;
+        private int iNode;
 
         public bool periodicInclusions = false;
 
-        public RandomCntGeometryGenerator(int numberOfSimulations,
-        int numberOfElementsPerCnt, double cntLength, int numberOfCnts,
-        double matrixLength, double matrixWidth, double matrixHeight)
+        public RandomCntGeometryGenerator(int numberOfElementsPerCnt, double cntLength, int numberOfCnts,
+        double matrixLength, double matrixWidth, double matrixHeight, int numElemLength, int numElemWidth, int numElemHeight)
         {
             this.numberOfElementsPerCnt = numberOfElementsPerCnt;
             this.cntLength = cntLength;
@@ -34,35 +37,40 @@ namespace MGroup.Stochastic
             this.matrixLength = matrixLength;
             this.matrixWidth = matrixWidth;
             this.matrixHeight = matrixHeight;
+            this.numElemLength = numElemLength;
+            this.numElemWidth = numElemWidth;
+            this.numElemHeight = numElemHeight;
         }
 
-        public (int[] nodeIds, double[][] nodeCoordinates, int[,] elementConnectivity) GenerateCnts()
+        public (int[] nodeIds, double[,] nodeCoordinates, int[,] elementConnectivity) GenerateCnts()
         {
             var random = new TRandom();
             var numberOfNodesPerCnt = numberOfElementsPerCnt + 1;
             var nodeIds = new int[numberOfCnts * numberOfNodesPerCnt];
             var elementConnectivity = new int[numberOfCnts * numberOfElementsPerCnt, 2];
-            var nodalCoordinates = new double[numberOfCnts * numberOfNodesPerCnt][];
+            var nodalCoordinates = new double[numberOfCnts * numberOfNodesPerCnt,3];
 
-            var counterNode = 0;
+            var countNode = (numElemLength + 1) * (numElemWidth + 1) * (numElemHeight + 1);
+            var position = 0;
             for (int indexCnt = 0; indexCnt < numberOfCnts; indexCnt++)
             {
                 var iNode0 = indexCnt * numberOfNodesPerCnt;
-                nodalCoordinates[iNode0] = new double[3];
-                nodalCoordinates[iNode0][0] = random.ContinuousUniform(0.0, matrixLength);
-                nodalCoordinates[iNode0][1] = random.ContinuousUniform(0.0, matrixHeight);
-                nodalCoordinates[iNode0][2] = random.ContinuousUniform(0.0, matrixWidth);
-                nodeIds[counterNode] = counterNode;
-                counterNode++;
+                //nodalCoordinates[iNode0] = new double[3];
+                nodalCoordinates[iNode0, 0] = random.ContinuousUniform(-matrixLength / 2, matrixLength / 2);
+                nodalCoordinates[iNode0, 1] = random.ContinuousUniform(-matrixHeight / 2, matrixHeight / 2);
+                nodalCoordinates[iNode0, 2] = random.ContinuousUniform(-matrixWidth / 2, matrixWidth / 2);
+                nodeIds[position] = countNode;
+                countNode++;
+                position++;
 
                 for (int indexElement = 0; indexElement < numberOfElementsPerCnt; indexElement++)
                 {
-                    var iNode = indexCnt * numberOfNodesPerCnt + indexElement;
+                    iNode = indexCnt * numberOfNodesPerCnt + indexElement;
                     //if (indexElement == 0)
                     //{
                         var randVector = new double[3] {random.Normal(0.0, 1.0), random.Normal(0.0, 1.0), random.Normal(0.0, 1.0)};
-                        var normValue = Math.Sqrt(randVector[1] * randVector[1] + randVector[2] * randVector[2] + randVector[3] * randVector[3]);
-                        randVector[1] = randVector[1] / normValue; randVector[2] = randVector[2] / normValue; randVector[3] = randVector[3] / normValue;
+                        var normValue = Math.Sqrt(randVector[0] * randVector[0] + randVector[1] * randVector[1] + randVector[2] * randVector[2]);
+                        randVector[0] = randVector[0] / normValue; randVector[1] = randVector[1] / normValue; randVector[2] = randVector[2] / normValue;
                     //}
                     //else
                     //{
@@ -70,12 +78,12 @@ namespace MGroup.Stochastic
                     var xNode = new double(); var yNode = new double(); var zNode = new double();
                     if (periodicInclusions == false)
                     { 
-                        xNode = nodalCoordinates[iNode][0] + randVector[1] * cntLength / numberOfElementsPerCnt;
-                        yNode = nodalCoordinates[iNode][1] + randVector[2] * cntLength / numberOfElementsPerCnt;
-                        zNode = nodalCoordinates[iNode][2] + randVector[3] * cntLength / numberOfElementsPerCnt;
-                        if (xNode > matrixLength || xNode < 0.0 ||
-                            yNode > matrixHeight || yNode < 0.0 ||
-                            zNode > matrixWidth || zNode < 0.0)
+                        xNode = nodalCoordinates[iNode,0] + randVector[0] * cntLength / numberOfElementsPerCnt;
+                        yNode = nodalCoordinates[iNode,1] + randVector[1] * cntLength / numberOfElementsPerCnt;
+                        zNode = nodalCoordinates[iNode,2] + randVector[2] * cntLength / numberOfElementsPerCnt;
+                        if (xNode > matrixLength / 2 || xNode < -matrixLength / 2 ||
+                            yNode > matrixHeight / 2 || yNode < -matrixHeight / 2 ||
+                            zNode > matrixWidth / 2 || zNode < -matrixWidth / 2)
                         {
                             indexElement -= 1;
                             continue;
@@ -83,40 +91,41 @@ namespace MGroup.Stochastic
                     }
                     else
                     {
-                        (xNode, yNode, zNode) = CreatePeriodicInclusion(nodalCoordinates[iNode], randVector);
+                        (xNode, yNode, zNode) = CreatePeriodicInclusion(nodalCoordinates, randVector);
                     }
                     //var distance = Math.Sqrt(dx * dx + dy * dy + dz * dz);
                     var elementId = indexCnt * numberOfElementsPerCnt + indexElement;
-                    elementConnectivity[elementId, 0] = counterNode - 1;
-                    elementConnectivity[elementId, 1] = counterNode;
-                    nodalCoordinates[iNode + 1][0] = xNode;
-                    nodalCoordinates[iNode + 1][1] = yNode;
-                    nodalCoordinates[iNode + 1][2] = zNode;
-                    nodeIds[counterNode] = counterNode;
-                    counterNode++;
+                    elementConnectivity[elementId, 0] = countNode - 1;
+                    elementConnectivity[elementId, 1] = countNode;
+                    nodalCoordinates[iNode + 1,0] = xNode;
+                    nodalCoordinates[iNode + 1,1] = yNode;
+                    nodalCoordinates[iNode + 1,2] = zNode;
+                    nodeIds[position] = countNode;
+                    countNode++;
+                    position++;
                 }
             }
             return (nodeIds, nodalCoordinates, elementConnectivity);
         }
 
-        private (double xNode, double yNode, double zNode) CreatePeriodicInclusion(double[] startNodeCoordinates,double[] randVector)
+        private (double xNode, double yNode, double zNode) CreatePeriodicInclusion(double[,] startNodeCoordinates,double[] randVector)
         {
-            var xNode = startNodeCoordinates[1] + randVector[1] * cntLength / numberOfElementsPerCnt;
-            var yNode = startNodeCoordinates[2] + randVector[2] * cntLength / numberOfElementsPerCnt;
-            var zNode = startNodeCoordinates[3] + randVector[3] * cntLength / numberOfElementsPerCnt;
             var distFromBoundary = new double[3, 2];
-            var auxNodeCoordinates = startNodeCoordinates;
+            var auxNodeCoordinates = new double[3] { startNodeCoordinates[iNode, 0], startNodeCoordinates[iNode, 1], startNodeCoordinates[iNode, 2] };
             var auxElementLength = cntLength / numberOfElementsPerCnt;
             var figureElements = new List<double[]>();
+            var xNode = auxNodeCoordinates[0] + randVector[0] * cntLength / numberOfElementsPerCnt;
+            var yNode = auxNodeCoordinates[1] + randVector[1] * cntLength / numberOfElementsPerCnt;
+            var zNode = auxNodeCoordinates[2] + randVector[2] * cntLength / numberOfElementsPerCnt;
             var done = false;
             while (done == false)
             {
-                distFromBoundary[0, 0] = (matrixLength / 2 - auxNodeCoordinates[1]) * -1 / ((randVector[1] * auxElementLength) * -1);
-                distFromBoundary[0, 1] = (-matrixLength / 2 - auxNodeCoordinates[1]) * 1 / ((randVector[1] * auxElementLength) * 1);
-                distFromBoundary[1, 0] = (matrixWidth / 2 - auxNodeCoordinates[2]) * -1 / ((randVector[2] * auxElementLength) * -1);
-                distFromBoundary[1, 1] = (-matrixWidth / 2 - auxNodeCoordinates[2]) * 1 / ((randVector[2] * auxElementLength) * 1);
-                distFromBoundary[2, 0] = (matrixHeight / 2 - auxNodeCoordinates[3]) * -1 / ((randVector[3] * auxElementLength) * -1);
-                distFromBoundary[2, 1] = (-matrixHeight / 2 - auxNodeCoordinates[3]) * 1 / ((randVector[3] * auxElementLength) * 1);
+                distFromBoundary[0, 0] = (matrixLength / 2 - auxNodeCoordinates[0]) * -1 / ((randVector[0] * auxElementLength) * -1);
+                distFromBoundary[0, 1] = (-matrixLength / 2 - auxNodeCoordinates[0]) * 1 / ((randVector[0] * auxElementLength) * 1);
+                distFromBoundary[1, 0] = (matrixWidth / 2 - auxNodeCoordinates[1]) * -1 / ((randVector[1] * auxElementLength) * -1);
+                distFromBoundary[1, 1] = (-matrixWidth / 2 - auxNodeCoordinates[1]) * 1 / ((randVector[1] * auxElementLength) * 1);
+                distFromBoundary[2, 0] = (matrixHeight / 2 - auxNodeCoordinates[2]) * -1 / ((randVector[2] * auxElementLength) * -1);
+                distFromBoundary[2, 1] = (-matrixHeight / 2 - auxNodeCoordinates[2]) * 1 / ((randVector[2] * auxElementLength) * 1);
                 double minDist = 1000;
                 for (int i = 0; i < distFromBoundary.GetLength(1); i++)
                 {
@@ -130,52 +139,52 @@ namespace MGroup.Stochastic
                 }
                 if (distFromBoundary[0, 0] == minDist)
                 {
-                    auxNodeCoordinates[1] = auxNodeCoordinates[1] - matrixLength + minDist * randVector[1] * auxElementLength;
+                    auxNodeCoordinates[0] = auxNodeCoordinates[0] - matrixLength + minDist * randVector[0] * auxElementLength;
+                    auxNodeCoordinates[1] = auxNodeCoordinates[1] + minDist * randVector[1] * auxElementLength;
                     auxNodeCoordinates[2] = auxNodeCoordinates[2] + minDist * randVector[2] * auxElementLength;
-                    auxNodeCoordinates[3] = auxNodeCoordinates[3] + minDist * randVector[3] * auxElementLength;
                     auxElementLength = auxElementLength * (1 - minDist);
                 }
                 else if (distFromBoundary[0, 1] == minDist)
                 {
-                    auxNodeCoordinates[1] = auxNodeCoordinates[1] + matrixLength + minDist * randVector[1] * auxElementLength;
+                    auxNodeCoordinates[0] = auxNodeCoordinates[0] + matrixLength + minDist * randVector[0] * auxElementLength;
+                    auxNodeCoordinates[1] = auxNodeCoordinates[1] + minDist * randVector[1] * auxElementLength;
                     auxNodeCoordinates[2] = auxNodeCoordinates[2] + minDist * randVector[2] * auxElementLength;
-                    auxNodeCoordinates[3] = auxNodeCoordinates[3] + minDist * randVector[3] * auxElementLength;
                     auxElementLength = auxElementLength * (1 - minDist);
                 }
                 else if (distFromBoundary[1, 0] == minDist)
                 {
-                    auxNodeCoordinates[1] = auxNodeCoordinates[1] + minDist * randVector[1] * auxElementLength;
-                    auxNodeCoordinates[2] = auxNodeCoordinates[2] - matrixWidth + minDist * randVector[2] * auxElementLength;
-                    auxNodeCoordinates[3] = auxNodeCoordinates[3] + minDist * randVector[3] * auxElementLength;
+                    auxNodeCoordinates[0] = auxNodeCoordinates[0] + minDist * randVector[0] * auxElementLength;
+                    auxNodeCoordinates[1] = auxNodeCoordinates[1] - matrixWidth + minDist * randVector[1] * auxElementLength;
+                    auxNodeCoordinates[2] = auxNodeCoordinates[2] + minDist * randVector[2] * auxElementLength;
                     auxElementLength = auxElementLength * (1 - minDist);
                 }
                 else if (distFromBoundary[1, 1] == minDist)
                 {
-                    auxNodeCoordinates[1] = auxNodeCoordinates[1] + minDist * randVector[1] * auxElementLength;
-                    auxNodeCoordinates[2] = auxNodeCoordinates[2] + matrixWidth + minDist * randVector[2] * auxElementLength;
-                    auxNodeCoordinates[3] = auxNodeCoordinates[3] + minDist * randVector[3] * auxElementLength;
+                    auxNodeCoordinates[0] = auxNodeCoordinates[0] + minDist * randVector[0] * auxElementLength;
+                    auxNodeCoordinates[1] = auxNodeCoordinates[1] + matrixWidth + minDist * randVector[1] * auxElementLength;
+                    auxNodeCoordinates[2] = auxNodeCoordinates[2] + minDist * randVector[2] * auxElementLength;
                     auxElementLength = auxElementLength * (1 - minDist);
                 }
                 else if (distFromBoundary[2, 0] == minDist)
                 {
+                    auxNodeCoordinates[0] = auxNodeCoordinates[0] + minDist * randVector[0] * auxElementLength;
                     auxNodeCoordinates[1] = auxNodeCoordinates[1] + minDist * randVector[1] * auxElementLength;
-                    auxNodeCoordinates[2] = auxNodeCoordinates[2] + minDist * randVector[2] * auxElementLength;
-                    auxNodeCoordinates[3] = auxNodeCoordinates[3] - matrixHeight + minDist * randVector[3] * auxElementLength;
+                    auxNodeCoordinates[2] = auxNodeCoordinates[2] - matrixHeight + minDist * randVector[2] * auxElementLength;
                     auxElementLength = auxElementLength * (1 - minDist);
                 }
                 else if (distFromBoundary[2, 1] == minDist)
                 {
+                    auxNodeCoordinates[0] = auxNodeCoordinates[0] + minDist * randVector[0] * auxElementLength;
                     auxNodeCoordinates[1] = auxNodeCoordinates[1] + minDist * randVector[1] * auxElementLength;
-                    auxNodeCoordinates[2] = auxNodeCoordinates[2] + minDist * randVector[2] * auxElementLength;
-                    auxNodeCoordinates[3] = auxNodeCoordinates[3] + matrixHeight + minDist * randVector[3] * auxElementLength;
+                    auxNodeCoordinates[2] = auxNodeCoordinates[2] + matrixHeight + minDist * randVector[2] * auxElementLength;
                     auxElementLength = auxElementLength * (1 - minDist);
                 }
                 else
                 {
                     done = true;
-                    xNode = auxNodeCoordinates[1] + randVector[1] * auxElementLength;
-                    yNode = auxNodeCoordinates[2] + randVector[2] * auxElementLength;
-                    zNode = auxNodeCoordinates[3] + randVector[3] * auxElementLength;
+                    xNode = auxNodeCoordinates[0] + randVector[0] * auxElementLength;
+                    yNode = auxNodeCoordinates[1] + randVector[1] * auxElementLength;
+                    zNode = auxNodeCoordinates[2] + randVector[2] * auxElementLength;
                 }               
             }
             return (xNode, yNode, zNode);
