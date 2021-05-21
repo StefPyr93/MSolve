@@ -176,7 +176,7 @@ namespace ISAAR.MSolve.Analyzers.Multiscale
         {
             foreach (ILinearSystem linearSystem in linearSystems.Values)
             {
-                linearSystem.RhsVector.CopyFrom(rhs[linearSystem.Subdomain.ID]);                                
+                linearSystem.RhsVector.CopyFrom(rhs[linearSystem.Subdomain.ID]);
             }
         }
 

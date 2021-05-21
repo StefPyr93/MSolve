@@ -36,6 +36,8 @@ using MatlabWriter = MathNet.Numerics.Data.Matlab.MatlabWriter;
 using ISAAR.MSolve.FEM.Entities;
 using ISAAR.MSolve.Analyzers.NonLinear;
 using ISAAR.MSolve.Logging;
+using ISAAR.MSolve.Solvers.Ordering;
+using ISAAR.MSolve.Solvers.Ordering.Reordering;
 
 //[assembly: SuppressXUnitOutputException]
 
@@ -269,7 +271,7 @@ namespace ISAAR.MSolve.Tests
 
             bool append = false;
 
-            int numberOfCnts = 0;
+            int numberOfCnts = 10;
             int solutions = 1;
             int increments_per_solution = 100;
             double[][] Input = new double[solutions * increments_per_solution][];
@@ -284,7 +286,7 @@ namespace ISAAR.MSolve.Tests
 
             for (int num_solution = 0; num_solution < solutions; num_solution++)
             {
-                var maxstrain = 0.01;
+                var maxstrain = -0.01;
                 var MacroStrain = new double[6] { maxstrain, -0.2 * maxstrain, -0.2 * maxstrain, 0.0, 0.0, 0.0 };
                 //var MacroStrain = new double[6] { 0.1, 0.1, 0.1, 0.05, 0.05, 0.05 };
                 //var trandom = new TRandom();
@@ -352,7 +354,8 @@ namespace ISAAR.MSolve.Tests
         [Fact]
         public static void TestMazarsConcreteMaterialPoint()
         {
-            var max_strain = new double[6] { -0.01, 0.01 * 0.2, 0.01 * 0.2, 0, 0, 0 };
+            var maxStrain = 0.0005;
+            var max_strain = new double[6] { maxStrain, -maxStrain * 0.2, -maxStrain * 0.2, 0, 0, 0 };
             var increments = 100;
             var strain = new double[6];
             var stress = new double[increments];
@@ -378,163 +381,121 @@ namespace ISAAR.MSolve.Tests
             }
         }
 
-        //[Fact]
-        //public void TestMazarsConcreteMaterialDisplacementControl()
-        //{
-        //    double nodalDisplacement = 146.0;
-        //    double area = 91.04;
-        //    double inertia = 8091.0;
-        //    int nNodes = 3;
-        //    int nElems = 2;
-        //    int monitorNode = 3;
-        //    int subdomainID = 0;
-        //    // Create new 2D material
-        //    var material = new MazarsConcreteMaterial
-        //    {
-        //        youngModulus = 30000,
-        //        poissonRatio = 0.2,
-        //        At = 1.0,
-        //        Bt = 15000,
-        //        Ac = 1.2,
-        //        Bc = 1500,
-        //        Strain_0 = 0.0001,
-        //        Veta = 1,
-        //    };
+        [Fact]
+        private static TotalDisplacementsPerIterationLog SolveModel()
+        {
+            int subdomainID = 0;
+            var model = new Model();
+            model.SubdomainsDictionary.Add(subdomainID, new Subdomain(subdomainID));
 
-        //    // Model creation
-        //    Model model = new Model();
+            BuildCantileverModel(model, -2);
 
-        //    // Add a single subdomain to the model
-        //    model.SubdomainsDictionary.Add(subdomainID, new Subdomain(subdomainID));
+            // Solver
+            var solverBuilder = new CSparseLUSolver.Builder();
+            ISolver solver = solverBuilder.BuildSolver(model);
 
-        //    // Node creation
-        //    double[,] nodeData = new double[,] { {-0.250000,-0.250000,-0.2500000},
-        //    {0.250000,-0.250000,-0.250000},
-        //    {-0.250000,0.250000,-0.250000},
-        //    {0.250000,0.250000,-0.250000},
-        //    {-0.250000,-0.250000,0.250000},
-        //    {0.250000,-0.250000,0.250000},
-        //    {-0.250000,0.250000,0.250000},
-        //    {0.250000,0.250000,0.250000},
-        //    };
+            // Problem type
+            var provider = new ProblemStructural(model, solver);
 
-        //    int[,] elementData = new int[,] {{1,1,2,4,3,5,6,8,7},
-        //    };
+            // Analyzers
+            int increments = 100;
+            var childAnalyzerBuilder = new DisplacementControlAnalyzer.Builder(model, solver, provider, increments);
+            childAnalyzerBuilder.ResidualTolerance = 1E-8;
+            childAnalyzerBuilder.MaxIterationsPerIncrement = 100;
+            childAnalyzerBuilder.NumIterationsForMatrixRebuild = 1;
+            //childAnalyzerBuilder.SubdomainUpdaters = new[] { new NonLinearSubdomainUpdater(model.SubdomainsDictionary[subdomainID]) }; // This is the default
+            DisplacementControlAnalyzer childAnalyzer = childAnalyzerBuilder.Build();
+            var parentAnalyzer = new StaticAnalyzer(model, solver, provider, childAnalyzer);
 
-        //    // orismos shmeiwn
-        //    for (int nNode = 0; nNode < nodeData.GetLength(0); nNode++)
-        //    {
-        //        model.NodesDictionary.Add(nNode + 1, new Node(id: nNode + 1, x: nodeData[nNode, 0], y: nodeData[nNode, 1], z: nodeData[nNode, 2]));
+            // Output
+            var watchDofs = new Dictionary<int, int[]>();
+            watchDofs.Add(subdomainID, new int[1] { 0 });
+            var log1 = new TotalDisplacementsPerIterationLog(watchDofs);
+            childAnalyzer.TotalDisplacementsPerIterationLog = log1;
 
-        //    }
+            // Run the anlaysis
+            parentAnalyzer.Initialize();
+            parentAnalyzer.Solve();
 
-        //    // orismos elements 
-        //    Element e1;
-        //    for (int nElement = 0; nElement < elementData.GetLength(0); nElement++)
-        //    {
-        //        e1 = new Element()
-        //        {
-        //            ID = nElement + 1,
-        //            ElementType = new Hexa8Fixed(material) // dixws to e. exoume sfalma enw sto beambuilding oxi//edw kaleitai me ena orisma to Hexa8                    
-        //        };
-        //        for (int j = 0; j < 8; j++)
-        //        {
-        //            e1.NodesDictionary.Add(elementData[nElement, j + 1], model.NodesDictionary[elementData[nElement, j + 1]]);
-        //        }
-        //        model.ElementsDictionary.Add(e1.ID, e1);
-        //        model.SubdomainsDictionary[subdomainID].Elements.Add(e1.ID, e1);
-        //    }
+            return log1;
+        }
 
-        //    // constraint vashh opou z=-1
-        //    for (int k = 1; k < 5; k++)
-        //    {
-        //        model.NodesDictionary[k].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationX });
-        //        model.NodesDictionary[k].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationY });
-        //        model.NodesDictionary[k].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationZ });
-        //    }
+        private static void BuildCantileverModel(Model model, double load_value)
+        {
+            //VonMisesMaterial3D material1 = new VonMisesMaterial3D(1353000, 0.30, 1353000, 0.15);
+            var material1 = new MazarsConcreteMaterial()
+            {
+                youngModulus = 30000,
+                poissonRatio = 0.2,
+                At = 1, //At = 1.0,
+                Bt = 15000, //Bt = 15000,
+                Ac = 1.2,
+                Bc = 1500,
+                Strain_0 = 0.0001,
+                Veta = 1,
+            };
+            //var material1 = new ElasticMaterial3D { YoungModulus = 30000, PoissonRatio = 0.2 };
 
-        //    // fortish korufhs
-        //    Load load1;
-        //    for (int k = 17; k < 21; k++)
-        //    {
-        //        load1 = new Load()
-        //        {
-        //            Node = model.NodesDictionary[k],
-        //            DOF = StructuralDof.TranslationX,
-        //            Amount = 1 * load_value
-        //        };
-        //        model.Loads.Add(load1);
-        //    }
+            double[,] nodeData = new double[,] { {-0.250000,-0.250000,0.000000},
+            {0.250000,-0.250000,0.000000},
+            {-0.250000,0.250000,0.000000},
+            {0.250000,0.250000,0.000000},
+            {-0.250000,-0.250000,0.500000},
+            {0.250000,-0.250000,0.500000},
+            {-0.250000,0.250000,0.500000},
+            {0.250000,0.250000,0.500000},};
 
-        //    // Add nodes to the nodes dictonary of the model
-        //    for (int i = 0; i < nodes.Count; ++i)
-        //    {
-        //        model.NodesDictionary.Add(i + 1, nodes[i]);
-        //    }
+            int[,] elementData = new int[,] {{1,1,2,4,3,5,6,8,7},};
 
-        //    // Constrain bottom nodes of the model
-        //    model.NodesDictionary[1].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationX });
-        //    model.NodesDictionary[1].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationY });
-        //    model.NodesDictionary[1].Constraints.Add(new Constraint { DOF = StructuralDof.RotationZ });
+            // orismos shmeiwn
+            for (int nNode = 0; nNode < nodeData.GetLength(0); nNode++)
+            {
+                model.NodesDictionary.Add(nNode + 1, new Node(id: nNode + 1, x: nodeData[nNode, 0], y: nodeData[nNode, 1], z: nodeData[nNode, 2]));
 
-        //    // Applied displacement
-        //    model.NodesDictionary[3].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationY, Amount = nodalDisplacement });
+            }
 
-        //    // Generate elements of the structure
-        //    int iNode = 1;
-        //    for (int iElem = 0; iElem < nElems; iElem++)
-        //    {
-        //        // element nodes
-        //        IList<Node> elementNodes = new List<Node>();
-        //        elementNodes.Add(model.NodesDictionary[iNode]);
-        //        elementNodes.Add(model.NodesDictionary[iNode + 1]);
+            // orismos elements 
+            Element e1;
+            int subdomainID = 0;
+            for (int nElement = 0; nElement < elementData.GetLength(0); nElement++)
+            {
+                e1 = new Element()
+                {
+                    ID = nElement + 1,
+                    ElementType = new Hexa8Fixed(material1) // dixws to e. exoume sfalma enw sto beambuilding oxi//edw kaleitai me ena orisma to Hexa8                    
+                };
+                for (int j = 0; j < 8; j++)
+                {
+                    e1.NodesDictionary.Add(elementData[nElement, j + 1], model.NodesDictionary[elementData[nElement, j + 1]]);
+                }
+                model.ElementsDictionary.Add(e1.ID, e1);
+                model.SubdomainsDictionary[subdomainID].Elements.Add(e1.ID, e1);
+            }
 
-        //        // Create new Beam3D section and element
-        //        var beamSection = new BeamSection2D(area, inertia);
+            // constraint vashh opou z=-1
+            for (int k = 1; k < 5; k++)
+            {
+                model.NodesDictionary[k].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationX });
+                model.NodesDictionary[k].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationY });
+                model.NodesDictionary[k].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationZ });
+            }
 
-        //        // Create elements
-        //        var element = new Element()
-        //        {
-        //            ID = iElem + 1,
-        //            ElementType = new Beam2DCorotational(elementNodes, material, 7.85, beamSection)
-        //        };
+            //// fortish korufhs
+            //Load load1;
+            //for (int k = 5; k < 9; k++)
+            //{
+            //    load1 = new Load()
+            //    {
+            //        Node = model.NodesDictionary[k],
+            //        DOF = StructuralDof.TranslationZ,
+            //        Amount = 1 * load_value
+            //    };
+            //    model.Loads.Add(load1);
+            //}
 
-        //        // Add nodes to the created element
-        //        element.AddNode(model.NodesDictionary[iNode]);
-        //        element.AddNode(model.NodesDictionary[iNode + 1]);
-
-        //        var a = element.ElementType.StiffnessMatrix(element);
-
-        //        // Add beam element to the element and subdomains dictionary of the model
-        //        model.ElementsDictionary.Add(element.ID, element);
-        //        model.SubdomainsDictionary[subdomainID].Elements.Add(element.ID, element);
-        //        iNode++;
-        //    }
-
-        //    // Choose linear equation system solver
-        //    var solverBuilder = new SkylineSolver.Builder();
-        //    ISolver solver = solverBuilder.BuildSolver(model);
-
-        //    // Choose the provider of the problem -> here a structural problem
-        //    var provider = new ProblemStructural(model, solver);
-
-        //    // Choose child analyzer -> Child: NewtonRaphsonNonLinearAnalyzer
-        //    int numIncrements = 10;
-        //    var childAnalyzerBuilder = new DisplacementControlAnalyzer.Builder(model, solver, provider, numIncrements);
-        //    childAnalyzerBuilder.ResidualTolerance = 1E-8;
-        //    childAnalyzerBuilder.MaxIterationsPerIncrement = 100;
-        //    childAnalyzerBuilder.NumIterationsForMatrixRebuild = 1;
-        //    DisplacementControlAnalyzer childAnalyzer = childAnalyzerBuilder.Build();
-
-        //    // Choose parent analyzer -> Parent: Static
-        //    var parentAnalyzer = new StaticAnalyzer(model, solver, provider, childAnalyzer);
-
-        //    // Request output
-        //    childAnalyzer.LogFactories[subdomainID] = new LinearAnalyzerLogFactory(new int[] { 3 });
-
-        //    // Run the analysis
-        //    parentAnalyzer.Initialize();
-        //    parentAnalyzer.Solve();
-        //}
+            // Applied displacement
+            for (int k = 5; k < 9; k++)
+                model.NodesDictionary[k].Constraints.Add(new Constraint { DOF = StructuralDof.TranslationZ, Amount = -0.005 });
+        }
     }
 }

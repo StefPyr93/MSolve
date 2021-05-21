@@ -72,7 +72,7 @@ namespace MGroup.Stochastic
 
         public CntReinforcedElasticNanocomposite(int numberOfCnts)
         {
-            K_el = 15; K_pl = 1.5; T_max = 0.15;
+            K_el = 10; K_pl = 1.0; T_max = 0.10;
             //this.matrixMaterial = new ElasticMaterial3D()
             //{ YoungModulus = 4, PoissonRatio = 0.4, };
             constParameters = new double[3] { K_el, K_pl, T_max };
@@ -81,13 +81,15 @@ namespace MGroup.Stochastic
             {
                 youngModulus = 30,
                 poissonRatio = 0.2,
-                At = 1.0,
-                Bt = 15000,
-                Ac = 1.2,
-                Bc = 1500,
+                At = 1, //At = 1.0,
+                Bt = 15000, //Bt = 15000,
+                Ac = 1.2,// 1.2,
+                Bc = 1500,//1500,
                 Strain_0 = 0.0001,
                 Veta = 1,
             };
+
+            //this.matrixMaterial = new MohrCoulombMaterial(1000, 0.3, 5.5, 10, 5);
 
             this.CntMaterial = new ElasticMaterial3D()
             {
@@ -154,7 +156,7 @@ namespace MGroup.Stochastic
             //            .Select(kv => kv.Value).ToArray(), true);
 
             //var paraviewEmbedded =
-            //    new ParaviewEmbedded3D(model, null, Path.Combine(Directory.GetCurrentDirectory(), "ParaviewCNT"));
+            //new ParaviewEmbedded3D(model, null, Path.Combine(Directory.GetCurrentDirectory(), "ParaviewCNT"));
             //paraviewEmbedded.CreateParaviewFile();
 
             var boundaryNodesIds = GetBoundaryNodeIds();

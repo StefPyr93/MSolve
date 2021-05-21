@@ -97,14 +97,8 @@ namespace MGroup.Stochastic
             }
             for (int i = 0; i < 6; i++)
                 strain[i] = strain_prev[i] + dstrain[i];
-            for (int i = 0; i < 6; i++)
-            {
-                stress[i] = 0;
-                for (int j = 0; j < 6; j++)
-                    stress[i] += this.constitutiveMatrix[i, j] * strain[j];
-            }
             strain_eq = 0.0;
-            var strain_mat = new double[3, 3] { { strain[0], strain[3], strain[4] }, { strain[3], strain[1], strain[5] }, { strain[4], strain[5], strain[2] } };
+            var strain_mat = new double[3, 3] { { strain[0], strain[3], strain[5] }, { strain[3], strain[1], strain[4] }, { strain[5], strain[4], strain[2] } };
             var eigen_strain_mat = new EigenvalueDecomposition(strain_mat);
             var sum_principal_strains = 0.0;
             for (int i = 0; i < 3; i++)
@@ -118,12 +112,19 @@ namespace MGroup.Stochastic
             strain_eq = Math.Sqrt(strain_eq);
             if (strain_eq <= strain_eq_prev)
             {
-                dmg = dmg_prev;
                 for (int i = 0; i < 6; i++)
                 {
                     for (int j = 0; j < 6; j++)
                     {
-                        D_tan[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j];
+                        D_tan[i, j] = (1 - dmg_prev) * this.constitutiveMatrix[i, j];
+                    }
+                }
+                for (int i = 0; i < 6; i++)
+                {
+                    stress[i] = 0;
+                    for (int j = 0; j < 6; j++)
+                    {
+                        stress[i] += D_tan[i, j] * strain[j];
                     }
                 }
             }
@@ -134,12 +135,12 @@ namespace MGroup.Stochastic
                     stress_eff[i] = 0;
                     for (int j = 0; j < 6; j++)
                     {
-                        stress_eff[i] += D_tan[i, j] * strain[j];
+                        stress_eff[i] += this.constitutiveMatrix[i, j] * strain[j];
                     }
                 }
-                var stress_mat = new double[3, 3] { { stress_eff[0], stress_eff[3], stress_eff[4] },
-                                 { stress_eff[3], stress_eff[1], stress_eff[5] }, { stress_eff[4], stress_eff[5], stress_eff[2] } };
-                var eigen_stress = new EigenvalueDecomposition(stress_mat, assumeSymmetric: true);
+                var stress_mat = new double[3, 3] { { stress_eff[0], stress_eff[3], stress_eff[5] },
+                                 { stress_eff[3], stress_eff[1], stress_eff[4] }, { stress_eff[5], stress_eff[4], stress_eff[2] } };
+                var eigen_stress = new EigenvalueDecomposition(stress_mat);
                 var eigen_stress_pos = new double[3, 3];
                 var eigen_stress_neg = new double[3, 3];
                 for (int i = 0; i < 3; i++)
@@ -186,18 +187,18 @@ namespace MGroup.Stochastic
                     strain_t_temp[i] += inverseConstitutiveMatrix[i, 1] * stress_t_temp2[1, 1];
                     strain_t_temp[i] += inverseConstitutiveMatrix[i, 2] * stress_t_temp2[2, 2];
                     strain_t_temp[i] += inverseConstitutiveMatrix[i, 3] * stress_t_temp2[0, 1];
-                    strain_t_temp[i] += inverseConstitutiveMatrix[i, 4] * stress_t_temp2[0, 2];
-                    strain_t_temp[i] += inverseConstitutiveMatrix[i, 5] * stress_t_temp2[1, 2];
+                    strain_t_temp[i] += inverseConstitutiveMatrix[i, 4] * stress_t_temp2[1, 2];
+                    strain_t_temp[i] += inverseConstitutiveMatrix[i, 5] * stress_t_temp2[0, 2];
 
                     strain_c_temp[i] += inverseConstitutiveMatrix[i, 0] * stress_c_temp2[0, 0];
                     strain_c_temp[i] += inverseConstitutiveMatrix[i, 1] * stress_c_temp2[1, 1];
                     strain_c_temp[i] += inverseConstitutiveMatrix[i, 2] * stress_c_temp2[2, 2];
                     strain_c_temp[i] += inverseConstitutiveMatrix[i, 3] * stress_c_temp2[0, 1];
-                    strain_c_temp[i] += inverseConstitutiveMatrix[i, 4] * stress_c_temp2[0, 2];
-                    strain_c_temp[i] += inverseConstitutiveMatrix[i, 5] * stress_c_temp2[1, 2];
+                    strain_c_temp[i] += inverseConstitutiveMatrix[i, 4] * stress_c_temp2[1, 2];
+                    strain_c_temp[i] += inverseConstitutiveMatrix[i, 5] * stress_c_temp2[0, 2];
                 }
-                strain_t = new double[3, 3] { { strain_t_temp[0], strain_t_temp[3], strain_t_temp[4] }, { strain_t_temp[3], strain_t_temp[1], strain_t_temp[5] }, { strain_t_temp[4], strain_t_temp[5], strain_t_temp[2] } };
-                strain_c = new double[3, 3] { { strain_c_temp[0], strain_c_temp[3], strain_c_temp[4] }, { strain_c_temp[3], strain_c_temp[1], strain_c_temp[5] }, { strain_c_temp[4], strain_c_temp[5], strain_c_temp[2] } };
+                strain_t = new double[3, 3] { { strain_t_temp[0], strain_t_temp[3], strain_t_temp[5] }, { strain_t_temp[3], strain_t_temp[1], strain_t_temp[4] }, { strain_t_temp[5], strain_t_temp[4], strain_t_temp[2] } };
+                strain_c = new double[3, 3] { { strain_c_temp[0], strain_c_temp[3], strain_c_temp[5] }, { strain_c_temp[3], strain_c_temp[1], strain_c_temp[4] }, { strain_c_temp[5], strain_c_temp[4], strain_c_temp[2] } };
                 var eigen_strain_t = new EigenvalueDecomposition(strain_t);
                 var eigen_strain_c = new EigenvalueDecomposition(strain_c);
                 for (int i = 0; i < 3; i++)
@@ -241,13 +242,36 @@ namespace MGroup.Stochastic
                 else if (dmg > 1)
                     dmg = 1;
                 var Dtan_coeff = (at * ((1 - At) * Strain_0 / Math.Pow(strain_eq, 2) + At * Bt * Math.Exp(-Bt * (strain_eq - Strain_0))) +
-                                  ac * ((1 - Ac) * Strain_0 / Math.Pow(strain_eq, 2) + Ac * Bc * Math.Exp(-Bc * (strain_eq - Strain_0)))) * 1 / strain_eq; //sum_principal_strains
+                                  ac * ((1 - Ac) * Strain_0 / Math.Pow(strain_eq, 2) + Ac * Bc * Math.Exp(-Bc * (strain_eq - Strain_0)))); //sum_principal_strains
+                //var Dtan_temp = new double[9, 9];
+                //for (int i = 0; i < 3; i++)
+                //{
+                //    for (int j = 0; j < 3; j++)
+                //    {
+                //        if (strain_mat[i, j] < 0)
+                //            strain_mat[i, j] = 0;
+                //    }
+                //}
+                //for (int i = 0; i < 3; i++)
+                //{
+                //    for (int j = 0; j < 3; j++)
+                //    {
+                //        for (int k = 0; k < 3; k++)
+                //        {
+                //            for (int l = 0; l < 3; l++)
+                //            {
+                //                Dtan_temp[3 * i + k, 3 * j + l] = Dtan_coeff * stress_mat[i, j] * strain_mat[k, l];
+                //            }
+                //        }
+                //    }
+                //}
+
                 for (int i = 0; i < 6; i++)
                 {
                     for (int j = 0; j < 6; j++)
                     {
                         if (strain[j] > 0)
-                            D_tan[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j] - Dtan_coeff * stress_eff[i] * strain[j];
+                            D_tan[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j] - (Dtan_coeff * stress_eff[i]) * (strain[j] / strain_eq);
                         else
                             D_tan[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j];
                         D_tan_f[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j];
@@ -337,7 +361,7 @@ namespace MGroup.Stochastic
 
         public void SaveState()
         {
-            if(strain_eq > Strain_0)
+            if(strain_eq > strain_eq_prev)
                 strain_eq_prev = strain_eq;
             dmg_prev = dmg;
             strain_prev = new double[6] { strain[0], strain[1], strain[2], strain[3], strain[4], strain[5] };

@@ -359,6 +359,7 @@ namespace ISAAR.MSolve.FEM.Elements
             GaussLegendrePoint3D[] integrationPoints = this.CalculateGaussMatrices(coordinates);
 
             var stiffnessMatrix = Matrix.CreateZero(24, 24);
+            //var stiffnessMatrix = SymmetricMatrix.CreateZero(24);
 
             int pointId = -1;
             foreach (GaussLegendrePoint3D intPoint in integrationPoints)
@@ -368,7 +369,7 @@ namespace ISAAR.MSolve.FEM.Elements
                 double[,] b = intPoint.DeformationMatrix;
                 for (int i = 0; i < 24; i++)
                 {
-                    double[] eb = new double[24];
+                    double[] eb = new double[6];
                     for (int iE = 0; iE < 6; iE++)
                     {
                         eb[iE] = (constitutiveMatrix[iE, 0] * b[0, i]) + (constitutiveMatrix[iE, 1] * b[1, i]) +
@@ -380,7 +381,7 @@ namespace ISAAR.MSolve.FEM.Elements
                     {
                         double stiffness = (b[0, j] * eb[0]) + (b[1, j] * eb[1]) + (b[2, j] * eb[2]) + (b[3, j] * eb[3]) +
                                            (b[4, j] * eb[4]) + (b[5, j] * eb[5]);
-                        stiffnessMatrix[i, j] += stiffness * intPoint.WeightFactor;
+                        stiffnessMatrix[j, i] += stiffness * intPoint.WeightFactor;
                     }
                 }
             }

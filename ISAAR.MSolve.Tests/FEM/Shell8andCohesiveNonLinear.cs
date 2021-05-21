@@ -31,7 +31,7 @@ namespace ISAAR.MSolve.Tests.FEM
         private static bool AreDisplacementsSame(IReadOnlyList<Dictionary<int, double>> expectedDisplacements, 
             TotalDisplacementsPerIterationLog computedDisplacements)
         {
-            var comparer = new ValueComparer(1E-10); // for node major dof order and skyline solver
+            var comparer = new ValueComparer(1E-6); // for node major dof order and skyline solver
             //var comparer = new ValueComparer(1E-3); // for other solvers. It may require adjusting after visual inspection
             for (int iter = 0; iter < expectedDisplacements.Count; ++iter)
             {

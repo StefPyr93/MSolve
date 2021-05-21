@@ -49,7 +49,8 @@ namespace ISAAR.MSolve.Solvers.Assemblers
             {
                 (int[] elementDofIndices, int[] subdomainDofIndices) = dofOrdering.MapFreeDofsElementToSubdomain(element);
                 IMatrix elementMatrix = matrixProvider.Matrix(element);
-                subdomainMatrix.AddSubmatrixSymmetric(elementMatrix, elementDofIndices, subdomainDofIndices);
+                //subdomainMatrix.AddSubmatrixSymmetric(elementMatrix, elementDofIndices, subdomainDofIndices);
+                subdomainMatrix.AddSubmatrix(elementMatrix, elementDofIndices, subdomainDofIndices, elementDofIndices, subdomainDofIndices);
             }
 
             (double[] values, int[] rowIndices, int[] colOffsets) = subdomainMatrix.BuildCscArrays(sortRowsOfEachCol);
