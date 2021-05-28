@@ -257,7 +257,7 @@ namespace ISAAR.MSolve.Tests
         {
             LinearAlgebra.LibrarySettings.LinearAlgebraProviders = LinearAlgebra.LinearAlgebraProviderChoice.MKL;
 
-            string pathName = @"C:\Users\felhuy\Desktop";
+            string pathName = @"C:\Users\stefp\OneDrive\Desktop\MsolveOutputs\matlabGeneratedCNTs\RVE Solutions";
 
             string InputFileName = "Input data.txt";
             string InputExtension = Path.GetExtension(InputFileName);
@@ -282,7 +282,7 @@ namespace ISAAR.MSolve.Tests
             homogeneousRveBuilder1.readFromText = false;
 
             IContinuumMaterial3D microstructure3 = new Microstructure3D(homogeneousRveBuilder1,
-                model => (new CSparseLUSolver.Builder()).BuildSolver(model), false, 1);
+                model => (new SuiteSparseSolver.Builder()).BuildSolver(model), false, 1);
 
             for (int num_solution = 0; num_solution < solutions; num_solution++)
             {

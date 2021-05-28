@@ -39,38 +39,38 @@ namespace ISAAR.MSolve.FEM.Elements
         [DllImport("femelements.dll",
             EntryPoint = "CALCH8GAUSSMATRICES",
             CallingConvention = CallingConvention.Cdecl)]
-        protected static extern void CalcH8GaussMatrices(ref int iInt, [MarshalAs(UnmanagedType.LPArray)]double[,] faXYZ,
-            [MarshalAs(UnmanagedType.LPArray)]double[] faWeight, [MarshalAs(UnmanagedType.LPArray)]double[,] faS,
-            [MarshalAs(UnmanagedType.LPArray)]double[,] faDS, [MarshalAs(UnmanagedType.LPArray)]double[,,] faJ,
-            [MarshalAs(UnmanagedType.LPArray)]double[] faDetJ, [MarshalAs(UnmanagedType.LPArray)]double[,,] faB);
+        protected static extern void CalcH8GaussMatrices(ref int iInt, [MarshalAs(UnmanagedType.LPArray)] double[,] faXYZ,
+            [MarshalAs(UnmanagedType.LPArray)] double[] faWeight, [MarshalAs(UnmanagedType.LPArray)] double[,] faS,
+            [MarshalAs(UnmanagedType.LPArray)] double[,] faDS, [MarshalAs(UnmanagedType.LPArray)] double[,,] faJ,
+            [MarshalAs(UnmanagedType.LPArray)] double[] faDetJ, [MarshalAs(UnmanagedType.LPArray)] double[,,] faB);
 
         [DllImport("femelements.dll",
             EntryPoint = "CALCH8STRAINS",
             CallingConvention = CallingConvention.Cdecl)]
         protected static extern void CalcH8Strains(ref int iInt,
-            [MarshalAs(UnmanagedType.LPArray)]double[,,] faB, [MarshalAs(UnmanagedType.LPArray)]double[] fau,
-            [MarshalAs(UnmanagedType.LPArray)]double[,] faStrains);
+            [MarshalAs(UnmanagedType.LPArray)] double[,,] faB, [MarshalAs(UnmanagedType.LPArray)] double[] fau,
+            [MarshalAs(UnmanagedType.LPArray)] double[,] faStrains);
 
         [DllImport("femelements.dll",
             EntryPoint = "CALCH8FORCES",
             CallingConvention = CallingConvention.Cdecl)]
         protected static extern void CalcH8Forces(ref int iInt,
-            [MarshalAs(UnmanagedType.LPArray)]double[,,] faB, [MarshalAs(UnmanagedType.LPArray)]double[] faWeight,
-            [MarshalAs(UnmanagedType.LPArray)]double[,] faStresses,
-            [MarshalAs(UnmanagedType.LPArray)]double[] faForces);
+            [MarshalAs(UnmanagedType.LPArray)] double[,,] faB, [MarshalAs(UnmanagedType.LPArray)] double[] faWeight,
+            [MarshalAs(UnmanagedType.LPArray)] double[,] faStresses,
+            [MarshalAs(UnmanagedType.LPArray)] double[] faForces);
 
         [DllImport("femelements.dll",
             EntryPoint = "CALCH8K",
             CallingConvention = CallingConvention.Cdecl)]
-        protected static extern void CalcH8K(ref int iInt, [MarshalAs(UnmanagedType.LPArray)]double[,,] faE,
-            [MarshalAs(UnmanagedType.LPArray)]double[,,] faB, [MarshalAs(UnmanagedType.LPArray)]double[] faWeight,
-            [MarshalAs(UnmanagedType.LPArray)]double[] faK);
+        protected static extern void CalcH8K(ref int iInt, [MarshalAs(UnmanagedType.LPArray)] double[,,] faE,
+            [MarshalAs(UnmanagedType.LPArray)] double[,,] faB, [MarshalAs(UnmanagedType.LPArray)] double[] faWeight,
+            [MarshalAs(UnmanagedType.LPArray)] double[] faK);
 
         [DllImport("femelements.dll",
             EntryPoint = "CALCH8MLUMPED",
             CallingConvention = CallingConvention.Cdecl)]
         protected static extern void CalcH8MLumped(ref int iInt, ref double fDensity,
-            [MarshalAs(UnmanagedType.LPArray)]double[] faWeight, [MarshalAs(UnmanagedType.LPArray)]double[] faM);
+            [MarshalAs(UnmanagedType.LPArray)] double[] faWeight, [MarshalAs(UnmanagedType.LPArray)] double[] faM);
         #endregion
 
         protected Hexa8Fixed()
@@ -358,8 +358,8 @@ namespace ISAAR.MSolve.FEM.Elements
             double[,] coordinates = this.GetCoordinates(element);
             GaussLegendrePoint3D[] integrationPoints = this.CalculateGaussMatrices(coordinates);
 
-            var stiffnessMatrix = Matrix.CreateZero(24, 24);
-            //var stiffnessMatrix = SymmetricMatrix.CreateZero(24);
+            //stiffnessMatrix = Matrix.CreateZero(24, 24);
+            var stiffnessMatrix = SymmetricMatrix.CreateZero(24);
 
             int pointId = -1;
             foreach (GaussLegendrePoint3D intPoint in integrationPoints)
@@ -377,7 +377,7 @@ namespace ISAAR.MSolve.FEM.Elements
                                  (constitutiveMatrix[iE, 4] * b[4, i]) + (constitutiveMatrix[iE, 5] * b[5, i]);
                     }
 
-                    for (int j = 0; j < 24; j++)
+                    for (int j = i; j < 24; j++)
                     {
                         double stiffness = (b[0, j] * eb[0]) + (b[1, j] * eb[1]) + (b[2, j] * eb[2]) + (b[3, j] * eb[3]) +
                                            (b[4, j] * eb[4]) + (b[5, j] * eb[5]);

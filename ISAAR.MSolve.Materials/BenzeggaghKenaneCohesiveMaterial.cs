@@ -181,13 +181,6 @@ namespace ISAAR.MSolve.Materials
                 {
                     D_tan[2, 2] += d * E;
                 }
-                for (int k = 0; k < 3; k++)
-                {
-                    for (int j = 0; j < 3; j++)
-                    {
-                        D_tan[k, j] = D_tan_f[k,j];
-                    }
-                }
             }
             this.modified = CheckIfConstitutiveMatrixChanged();
         }
