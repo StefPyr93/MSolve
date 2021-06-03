@@ -25,13 +25,13 @@ namespace MGroup.Stochastic
 {
     public class CntReinforcedElasticNanocomposite : IRVEbuilder
     {
-        int hexa1 = 3;
-        int hexa2 = 3;
-        int hexa3 = 3;
+        int hexa1 = 10;
+        int hexa2 = 10;
+        int hexa3 = 10;
 
-        double L01 = 30;
-        double L02 = 30;
-        double L03 = 30;
+        double L01 = 100;
+        double L02 = 100;
+        double L03 = 100;
 
         IIsotropicContinuumMaterial3D matrixMaterial;
         int hostElements { get; set; }
@@ -42,7 +42,7 @@ namespace MGroup.Stochastic
         // cnt paramaters
         IIsotropicContinuumMaterial3D CntMaterial;
         int numberOfCnts;
-        int cntLength = 15;
+        int cntLength = 50;
         // define mechanical properties
         private double youngModulus = 1.0;//1.051e12; // 5490; // 
         private double shearModulus = 1.0;//0.45e12; // 871; // 
@@ -77,16 +77,35 @@ namespace MGroup.Stochastic
             //{ YoungModulus = 4, PoissonRatio = 0.4, };
             constParameters = new double[3] { K_el, K_pl, T_max };
             //this.matrixMaterial = new NeuralNetworkTrainedMaterial() { ConstParameters = this.constParameters };
-            this.matrixMaterial = new MazarsConcreteMaterial()
+
+            //this.matrixMaterial = new MazarsConcreteMaterial()
+            //{
+            //    youngModulus = 20,
+            //    poissonRatio = 0.2,
+            //    At = 1, //At = 1.0,
+            //    Bt = 15000, //Bt = 15000,
+            //    Ac = 1.2,// 1.2,
+            //    Bc = 1500,//1500,
+            //    Strain_0 = 0.0001,
+            //    Veta = 1,
+            //};
+
+            //this.matrixMaterial = new ExponentialDamageMaterial()
+            //{
+            //    youngModulus = 20,
+            //    poissonRatio = 0.2,
+            //    A = 1,// 1.2,
+            //    B = 200,//1500,
+            //    Strain_0 = 0.0001,
+            //    Veta = 1,
+            //};
+
+            this.matrixMaterial = new BilinearDamageMaterial()
             {
-                youngModulus = 30,
+                youngModulus = 20,
                 poissonRatio = 0.2,
-                At = 1, //At = 1.0,
-                Bt = 15000, //Bt = 15000,
-                Ac = 1.2,// 1.2,
-                Bc = 1500,//1500,
-                Strain_0 = 0.0001,
-                Veta = 1,
+                Strain_0 = 0.002,
+                Strain_f = 0.010,
             };
 
             //this.matrixMaterial = new MohrCoulombMaterial(1000, 0.3, 5.5, 10, 5);

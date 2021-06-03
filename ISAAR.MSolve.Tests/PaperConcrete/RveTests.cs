@@ -271,9 +271,9 @@ namespace ISAAR.MSolve.Tests
 
             bool append = false;
 
-            int numberOfCnts = 10;
+            int numberOfCnts = 0;
             int solutions = 1;
-            int increments_per_solution = 100;
+            int increments_per_solution = 10;
             double[][] Input = new double[solutions * increments_per_solution][];
             double[][] Output = new double[solutions * increments_per_solution][];
 
@@ -288,10 +288,21 @@ namespace ISAAR.MSolve.Tests
             {
                 var maxstrain = -0.01;
                 var MacroStrain = new double[6] { maxstrain, -0.2 * maxstrain, -0.2 * maxstrain, 0.0, 0.0, 0.0 };
-                //var MacroStrain = new double[6] { 0.1, 0.1, 0.1, 0.05, 0.05, 0.05 };
                 //var trandom = new TRandom();
-                //for (int ii = 0; ii < 6; ii++) { MacroStrain[ii] = trandom.ContinuousUniform(-0.1, 0.1); }
-
+                //for (int ii = 0; ii < 6; ii++) MacroStrain[ii] = trandom.ContinuousUniform(-0.005, 0.005);
+                //var sum_neg_strain = 0.0;
+                //var sum_all_strain = 0.0;
+                //for (int i = 0; i < 3; i++)
+                //{
+                //    if (MacroStrain[i] < 0)
+                //    {
+                //        sum_neg_strain += Math.Abs(MacroStrain[i]);
+                //    }
+                //    sum_all_strain += Math.Abs(MacroStrain[i]);
+                //}
+                //var ratio = sum_neg_strain / sum_all_strain + 0.05 * (1 - sum_neg_strain / sum_all_strain);
+                //for (int ii = 0; ii < 6; ii++) MacroStrain[ii] = ratio * MacroStrain[ii];
+                //MacroStrain[0] = -0.003403484; MacroStrain[1] = 0.000754793; MacroStrain[2] = -0.000982713; MacroStrain[3] = -0.002473461; MacroStrain[4] = 0.003131575; MacroStrain[5] = -0.003564857;
                 //homogeneousRveBuilder1.K_el = trandom.ContinuousUniform(0.1, 20);
                 //homogeneousRveBuilder1.K_pl = trandom.ContinuousUniform(0.01, 2);
                 //homogeneousRveBuilder1.T_max = trandom.ContinuousUniform(0.001, 0.2);
@@ -354,28 +365,32 @@ namespace ISAAR.MSolve.Tests
         [Fact]
         public static void TestMazarsConcreteMaterialPoint()
         {
-            var maxStrain = 0.0005;
+            var maxStrain = -0.01;
             var max_strain = new double[6] { maxStrain, -maxStrain * 0.2, -maxStrain * 0.2, 0, 0, 0 };
+            //max_strain[0] = -0.003403484; max_strain[1] = 0.000754793; max_strain[2] = -0.000982713; max_strain[3] = -0.002473461; max_strain[4] = 0.003131575; max_strain[5] = -0.003564857;
             var increments = 100;
             var strain = new double[6];
+            var strain1 = new double[increments];
             var stress = new double[increments];
             var dmg = new double[increments];
-            var concrete = new MazarsConcreteMaterial()
+            var concrete = new BilinearDamageMaterial()
             {
-                youngModulus = 30000,
+                youngModulus = 20,
                 poissonRatio = 0.2,
-                At = 1.0,
-                Bt = 15000,
-                Ac = 1.2,
-                Bc = 1500,
-                Strain_0 = 0.0001,
-                Veta = 1,
+                //A = 1.0,
+                //B = 1000,
+                //Ac = 1.2,
+                //Bc = 1500,
+                Strain_0 = 0.002,
+                Strain_f = 0.010,
+                //Veta = 1,
             };
             for (int i = 0; i < increments; i++)
             {
                 for (int j = 0; j < 6; j++)
                     strain[j] = (i + 1) * max_strain[j] / increments;
                 concrete.UpdateMaterial(strain);
+                strain1[i] = strain[0];
                 stress[i] = concrete.Stresses[0];
                 dmg[i] = concrete.dmg;
             }

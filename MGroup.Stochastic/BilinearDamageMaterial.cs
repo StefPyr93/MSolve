@@ -7,33 +7,25 @@ using System.Text;
 
 namespace MGroup.Stochastic
 {
-    public class MazarsConcreteMaterial : IIsotropicContinuumMaterial3D
+    public class BilinearDamageMaterial : IIsotropicContinuumMaterial3D
     {
         private bool modified;
 
         public double youngModulus { get; set; }
         public double poissonRatio { get; set; }
         public double Strain_0 { get; set; }
-        public double At { get; set; }
-        public double Bt { get; set; }
-        public double Ac { get; set; }
-        public double Bc { get; set; }
-        public double Veta { get; set; }
+        public double Strain_f { get; set; }
 
         object ICloneable.Clone() => Clone();
         //IContinuumMaterial3D IContinuumMaterial3D.Clone() => Clone();
-        public MazarsConcreteMaterial Clone()
+        public BilinearDamageMaterial Clone()
         {
-            return new MazarsConcreteMaterial()
+            return new BilinearDamageMaterial()
             {
                 youngModulus = this.youngModulus,
                 poissonRatio = this.poissonRatio,
                 Strain_0 = this.Strain_0,
-                At = this.At,
-                Bt = this.Bt,
-                Ac = this.Ac,
-                Bc = this.Bc,
-                Veta = this.Veta,
+                Strain_f = this.Strain_f,
             };
         }
 
@@ -48,19 +40,7 @@ namespace MGroup.Stochastic
         private double[,] D_tan_prev;
         private double strain_eq;
         private double strain_eq_prev;
-        private double strain_t;
-        private double strain_c;
-        private double sum_princ_strains;
-        private double[] princ_strain_t;
-        private double[] princ_strain_c;
-        private double at;
-        private double ac;
-        private double dt;
-        private double dc;
         private double[,] D_tan_f;
-        private double tol;
-        private double lamda;
-        private double mu;
 
         private double[] stress = new double[6];
 
@@ -75,14 +55,9 @@ namespace MGroup.Stochastic
             strain_prev = new double[6];
             //stress = new double[6];
             stress_eff = new double[6];
-            princ_strain_t = new double[3];
-            princ_strain_c = new double[3];
             matrices_not_initialized = false;
-            tol = Math.Pow(10, -19);
             constitutiveMatrix = GetConstitutiveMatrix();
             inverseConstitutiveMatrix = GetInverseConstitutiveMatrix();
-            lamda = youngModulus * poissonRatio / ((1 + poissonRatio) * (1 - 2 * poissonRatio));
-            mu = youngModulus / (2 * (1 + poissonRatio));
         }
 
         public void UpdateMaterial(double[] dstrain)
@@ -99,46 +74,23 @@ namespace MGroup.Stochastic
             }
             for (int i = 0; i < 6; i++)
                 strain[i] = strain_prev[i] + dstrain[i];
-            var strain_eq2 = 0.0;
-            var strain_mat = new double[3, 3] { { strain[0], 0.5 * strain[3], 0.5 * strain[5] }, { 0.5 * strain[3], strain[1], 0.5 * strain[4] }, { 0.5 * strain[5], 0.5 * strain[4], strain[2] } };
-            //var strain_mat = new double[3, 3] { { strain[0], strain[3], strain[5] }, { strain[3], strain[1], strain[4] }, { strain[5], strain[4], strain[2] } };
-            var eigen_strain_mat = new EigenvalueDecomposition(strain_mat);
-            var sum_principal_stresses = 0.0;
-            var vol_strain = 0.0;
-            var princ_stress = new double[3];
-            var princ_strain = new double[3];
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < 6; i++)
             {
-                princ_strain[i] = eigen_strain_mat.DiagonalMatrix[i,i];
-                vol_strain += princ_strain[i];
+                stress_eff[i] = 0;
+                for (int j = 0; j < 6; j++)
+                {
+                    stress_eff[i] += this.constitutiveMatrix[i, j] * strain[j];
+                }
             }
-            for (int i = 0; i < 3; i++)
+            var strain_eq2 = 0.0;
+            for (int i = 0; i < 6; i++)
             {
-                princ_stress[i] = lamda * vol_strain + 2 * mu * princ_strain[i];
-                if (princ_stress[i] < 0)
-                {
-                    princ_stress[i] = 0;
-                }
-                sum_principal_stresses += princ_stress[i];
-                if (princ_strain[i] > 0)
-                {                   
-                    strain_eq2 += Math.Pow(princ_strain[i], 2);
-                }
-                else
-                {
-                    princ_strain[i] = 0;
-                }               
+                //strain_eq2 += Math.Pow(strain[i], 2);
+                strain_eq2 += 1 / youngModulus * strain[i] * stress_eff[i];
             }
             strain_eq = Math.Sqrt(strain_eq2);
+            if (double.IsNaN(strain_eq)) throw new ArithmeticException();
             strain_eq2 += 1e-10;
-            at = 0; ac = 0;
-            for (int i = 0; i < 3; i++)
-            {
-                strain_t = (1 + poissonRatio) / youngModulus * princ_stress[i] - poissonRatio / youngModulus * sum_principal_stresses;
-                strain_c = princ_strain[i] - strain_t;
-                at += strain_t * princ_strain[i] / strain_eq2;
-                ac += strain_c * princ_strain[i] / strain_eq2;
-            }
             if (strain_eq <= strain_eq_prev)//&& dmg == dmg_prev
             {
                 for (int i = 0; i < 6; i++)
@@ -159,40 +111,25 @@ namespace MGroup.Stochastic
             }
             else//if (strain_eq > strain_eq_prev)
             {
-                //strain_eq_prev = strain_eq;
-                dt = 1 - (1 - At) * Strain_0 / strain_eq - At / Math.Exp(Bt * (strain_eq - Strain_0));
-                dc = 1 - (1 - Ac) * Strain_0 / strain_eq - Ac / Math.Exp(Bc * (strain_eq - Strain_0));
-                if (at * dt + ac * dc > dmg_prev)
+                var dmg_temp = Strain_f / (Strain_f - Strain_0) * (1 - Strain_0 / strain_eq);
+                if (dmg_temp > dmg_prev)
                 {
-                    dmg = at * dt + ac * dc;
+                    dmg = dmg_temp;
                 }
-                //dmg_prev = dmg;
-                //strain_eq_prev = strain_eq;
 
                 if (dmg < 0)
                     dmg = 0;
                 else if (dmg > 0.99)
                     dmg = 0.99;
-                for (int i = 0; i < 6; i++)
-                {
-                    stress_eff[i] = 0;
-                    for (int j = 0; j < 6; j++)
-                    {
-                        stress_eff[i] += this.constitutiveMatrix[i, j] * strain[j];
-                    }
-                }
-                var Dtan_coeff = at * ((1 - At) * Strain_0 / Math.Pow(strain_eq, 2) + At * Bt * Math.Exp(-Bt * (strain_eq - Strain_0))) +
-                      ac * ((1 - Ac) * Strain_0 / Math.Pow(strain_eq, 2) + Ac * Bc * Math.Exp(-Bc * (strain_eq - Strain_0)));
+                var Dtan_coeff = Strain_0 * Strain_f / (strain_eq * strain_eq * (Strain_f - Strain_0));
                 for (int i = 0; i < 6; i++)
                 {
                     for (int j = 0; j < 6; j++)
                     {
-                        //if (strain[j] > 0)
-                        //    D_tan[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j] - (Dtan_coeff * stress_eff[i]) * (strain[j] / strain_eq);
-                        //else
-                        //    D_tan[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j];
-                        //D_tan_f[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j];
-                        D_tan[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j];
+                        //D_tan[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j] - (Dtan_coeff * stress_eff[i]) * (strain[j] / strain_eq);
+                        D_tan[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j] - Dtan_coeff / (youngModulus * strain_eq) * stress_eff[i] * stress_eff[j] ;
+                        D_tan_f[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j];
+                        //D_tan[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j];
                     }
                 }
                 for (int i = 0; i < 6; i++)
@@ -200,8 +137,8 @@ namespace MGroup.Stochastic
                     stress[i] = 0;
                     for (int j = 0; j < 6; j++)
                     {
-                        //stress[i] += D_tan_f[i, j] * strain[j];
-                        stress[i] += D_tan[i, j] * strain[j];
+                        stress[i] += D_tan_f[i, j] * strain[j];
+                        //stress[i] += D_tan[i, j] * strain[j];
                     }
                 }
             }

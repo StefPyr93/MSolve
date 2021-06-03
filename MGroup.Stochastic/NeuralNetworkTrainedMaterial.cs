@@ -8,14 +8,14 @@ namespace MGroup.Stochastic
 {
     public class NeuralNetworkTrainedMaterial : IIsotropicContinuumMaterial3D
     {
-        //private readonly double[] strains = new double[6];
+        private readonly double[] strains = new double[6];
         private readonly double[] stresses = new double[6];
         private Matrix constitutiveMatrix = null;
         public double YoungModulus { get; set; }
         public double PoissonRatio { get; set; }
         public double[] Coordinates { get; set; }
-        private readonly double[] totalStrains = new double[6];
         private double[] stressesNew = new double[6];
+        private double[] strainsNew = new double[6];
         public NeuralNetwork neuralNetwork = new NeuralNetwork();
         public double[] ConstParameters { get; set; }
 
@@ -28,12 +28,12 @@ namespace MGroup.Stochastic
 
         private Matrix GetConstitutiveMatrix()
         {
-            return neuralNetwork.CalculateNeuralNetworkJacobian(totalStrains);
+            return neuralNetwork.CalculateNeuralNetworkJacobian(strainsNew);
         }
 
         private void CalculateNextStressStrainPoint()
         {
-            this.stressesNew = neuralNetwork.CalculateNeuralNetworkOutput(totalStrains).CopyToArray();
+            this.stressesNew = neuralNetwork.CalculateNeuralNetworkOutput(strainsNew).CopyToArray();
         }
 
         #region IFiniteElementMaterial Members
@@ -59,10 +59,14 @@ namespace MGroup.Stochastic
             }
         }
 
-        public void UpdateMaterial(double[] strains)
+        public void UpdateMaterial(double[] dstrains)
         {
             //throw new NotImplementedException();
-            this.totalStrains.CopyFrom(strains);
+            this.strainsNew.CopyFrom(dstrains);
+            for (int i = 0; i < strains.Length; i++)
+            {
+                this.strainsNew[i] += strains[i];
+            }
             constitutiveMatrix = GetConstitutiveMatrix();
             this.CalculateNextStressStrainPoint();
 
@@ -71,12 +75,17 @@ namespace MGroup.Stochastic
         public void ClearState()
         {
             //constitutiveMatrix.Clear();
-            totalStrains.Clear();
+            strains.Clear();
             stresses.Clear();
+            strainsNew.Clear();
             stressesNew.Clear();
         }
 
-        public void SaveState() => stresses.CopyFrom(stressesNew);
+        public void SaveState()
+        {
+            stresses.CopyFrom(stressesNew); 
+            strains.CopyFrom(strainsNew);
+        }
 
         public void ClearStresses()
         {

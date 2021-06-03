@@ -233,7 +233,7 @@ namespace MGroup.Stochastic
                         ac += Math.Pow(princ_strain_c[i] / sum_princ_strains, Veta);
                     }
                 }
-                ac = 1;at = 0;
+                //ac = 1;at = 0;
                 dt = 1 - (1 - At) * Strain_0 / strain_eq - At / Math.Exp(Bt * (strain_eq - Strain_0));
                 dc = 1 - (1 - Ac) * Strain_0 / strain_eq - Ac / Math.Exp(Bc * (strain_eq - Strain_0));
                 dmg = at * dt + ac * dc;
@@ -248,7 +248,7 @@ namespace MGroup.Stochastic
                 {
                     for (int j = 0; j < 6; j++)
                     {
-                        if (strain[j] == 0)
+                        if (strain[j] > 0)
                             D_tan[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j] - (Dtan_coeff * stress_eff[i]) * (strain[j] / strain_eq);
                         else
                             D_tan[i, j] = (1 - dmg) * this.constitutiveMatrix[i, j];

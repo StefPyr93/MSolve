@@ -32,9 +32,6 @@ namespace ISAAR.MSolve.FEM.Elements
         private double[][] strainsVec;
         private double[][] strainsVecLastConverged;
 
-        public bool ismaterialfromNN = false;
-
-
         #region Fortran imports
         [DllImport("femelements.dll",
             EntryPoint = "CALCH8GAUSSMATRICES",
@@ -358,7 +355,7 @@ namespace ISAAR.MSolve.FEM.Elements
             double[,] coordinates = this.GetCoordinates(element);
             GaussLegendrePoint3D[] integrationPoints = this.CalculateGaussMatrices(coordinates);
 
-            //stiffnessMatrix = Matrix.CreateZero(24, 24);
+            //var stiffnessMatrix = Matrix.CreateZero(24, 24);
             var stiffnessMatrix = SymmetricMatrix.CreateZero(24);
 
             int pointId = -1;
@@ -460,23 +457,16 @@ namespace ISAAR.MSolve.FEM.Elements
                     }
                 }
                 strainsVec[gp] = deformationMatrix.Multiply(localDisplacements);
-                if (ismaterialfromNN == false)
+                strainsVecMinusLastConvergedValue = new double[6]
                 {
-                    strainsVecMinusLastConvergedValue = new double[6]
-                    {
-                    strainsVec[gp][0] - strainsVecLastConverged[gp][0],
-                    strainsVec[gp][1] - strainsVecLastConverged[gp][1],
-                    strainsVec[gp][2] - strainsVecLastConverged[gp][2],
-                    strainsVec[gp][3] - strainsVecLastConverged[gp][3],
-                    strainsVec[gp][4] - strainsVecLastConverged[gp][4],
-                    strainsVec[gp][5] - strainsVecLastConverged[gp][5],
-                    };
-                    materialsAtGaussPoints[gp].UpdateMaterial(strainsVecMinusLastConvergedValue);
-                }
-                else
-                {
-                    materialsAtGaussPoints[gp].UpdateMaterial(strainsVec[gp]);
-                }
+                strainsVec[gp][0] - strainsVecLastConverged[gp][0],
+                strainsVec[gp][1] - strainsVecLastConverged[gp][1],
+                strainsVec[gp][2] - strainsVecLastConverged[gp][2],
+                strainsVec[gp][3] - strainsVecLastConverged[gp][3],
+                strainsVec[gp][4] - strainsVecLastConverged[gp][4],
+                strainsVec[gp][5] - strainsVecLastConverged[gp][5],
+                };
+                materialsAtGaussPoints[gp].UpdateMaterial(strainsVecMinusLastConvergedValue);
                 //To update with total strain simplY = materialsAtGaussPoints[npoint].UpdateMaterial(strainsVec[npoint]);
             }
             return new Tuple<double[], double[]>(strainsVec[materialsAtGaussPoints.Length - 1], materialsAtGaussPoints[materialsAtGaussPoints.Length - 1].Stresses);
